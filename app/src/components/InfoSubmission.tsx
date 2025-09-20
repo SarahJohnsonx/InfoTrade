@@ -6,6 +6,27 @@ import { useEthersSigner } from '../hooks/useEthersSigner';
 import { CONTRACT_ADDRESS, CONTRACT_ABI } from '../config/contracts';
 import '../styles/InfoSubmission.css';
 
+// Generate a random Ethereum address
+function generateRandomAddress(): string {
+  const bytes = new Uint8Array(20);
+  crypto.getRandomValues(bytes);
+  return '0x' + Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+// Simple encryption function using a key address
+function encryptByKey(data: string, keyAddress: string): string {
+  const keyBytes = keyAddress.slice(2); // Remove 0x prefix
+  let encrypted = '';
+
+  for (let i = 0; i < data.length; i++) {
+    const dataChar = data.charCodeAt(i);
+    const keyChar = parseInt(keyBytes[(i * 2) % keyBytes.length] + keyBytes[(i * 2 + 1) % keyBytes.length], 16);
+    encrypted += String.fromCharCode(dataChar ^ keyChar);
+  }
+
+  return btoa(encrypted); // Base64 encode the result
+}
+
 export function InfoSubmission() {
   const { address } = useAccount();
   const { instance, isLoading: zamaLoading, error: zamaError } = useZamaInstance();
@@ -73,16 +94,17 @@ export function InfoSubmission() {
     try {
       // Create encrypted input for the target address
       const input = instance.createEncryptedInput(CONTRACT_ADDRESS, address);
-      input.addAddress(formData.targetAddress);
+      let sAddress = generateRandomAddress();
+      input.addAddress(sAddress);
       const encryptedInput = await input.encrypt();
 
       // Create contract instance
       const contract = new Contract(CONTRACT_ADDRESS, CONTRACT_ABI, signer);
-
+      let encryptInfo = encryptByKey(formData.info.trim(), sAddress);
       // Call storeInfo function
       const tx = await contract.storeInfo(
         formData.name.trim(),
-        formData.info.trim(),
+        encryptInfo,
         encryptedInput.handles[0], // encrypted address handle
         encryptedInput.inputProof
       );
