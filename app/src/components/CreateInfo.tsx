@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useAccount } from 'wagmi';
+import { ethers } from 'ethers';
 import { useInfoTradeWrite } from '../hooks/useInfoTrade';
 
 export function CreateInfo() {
@@ -16,26 +17,39 @@ export function CreateInfo() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    console.log('=== CreateInfo handleSubmit started ===');
+    console.log('Form data:', formData);
 
     if (!formData.title.trim() || !formData.info.trim() || !formData.price.trim()) {
+      console.log('Validation failed: missing fields');
       alert('请填写所有字段');
       return;
     }
 
     const price = parseFloat(formData.price);
     if (isNaN(price) || price <= 0) {
+      console.log('Validation failed: invalid price:', price);
       alert('请输入有效的价格');
       return;
     }
 
     try {
       setSuccess(false);
+      console.log('Starting info creation...');
 
       // Note: For demo purposes, we're using placeholder values for encrypted data
       // In a real implementation, you would use Zama's encryption SDK here
       const encryptedOwnerAddress = "0x" + "0".repeat(64); // Placeholder
       const inputProof = "0x"; // Placeholder
       const priceInWei = ethers.parseEther(formData.price);
+
+      console.log('Calling createInfo with params:', {
+        title: formData.title,
+        info: formData.info,
+        encryptedOwnerAddress,
+        priceInWei: priceInWei.toString(),
+        inputProof
+      });
 
       await createInfo(
         formData.title,
@@ -45,6 +59,7 @@ export function CreateInfo() {
         inputProof
       );
 
+      console.log('Create info succeeded!');
       setSuccess(true);
       setFormData({ title: '', info: '', price: '' });
 
@@ -53,6 +68,7 @@ export function CreateInfo() {
 
     } catch (err) {
       console.error('Create info failed:', err);
+      alert('创建失败：' + (err as Error).message);
     }
   };
 

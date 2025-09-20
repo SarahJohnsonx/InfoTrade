@@ -152,6 +152,9 @@ export function useInfoTradeWrite() {
     try {
       setLoading(true);
       setError(null);
+      console.log(`=== executeTransaction: ${functionName} ===`);
+      console.log('Args:', args);
+      console.log('Value:', value);
 
       // Connect to wallet
       if (!window.ethereum) {
@@ -160,18 +163,25 @@ export function useInfoTradeWrite() {
 
       const provider = new ethers.BrowserProvider(window.ethereum);
       const signer = await provider.getSigner();
+      console.log('Signer address:', await signer.getAddress());
 
       // Create contract instance
       const contract = new ethers.Contract(INFO_TRADE_ADDRESS, INFO_TRADE_ABI, signer);
+      console.log('Contract address:', INFO_TRADE_ADDRESS);
 
       // Execute transaction
+      console.log('Executing transaction...');
       const tx = await contract[functionName](...args, value ? { value } : {});
+      console.log('Transaction sent:', tx.hash);
 
       // Wait for confirmation
+      console.log('Waiting for confirmation...');
       const receipt = await tx.wait();
+      console.log('Transaction confirmed:', receipt.status);
 
       return { tx, receipt };
     } catch (err: any) {
+      console.error('Transaction error:', err);
       const errorMessage = err.reason || err.message || 'Transaction failed';
       setError(errorMessage);
       throw new Error(errorMessage);
@@ -187,6 +197,8 @@ export function useInfoTradeWrite() {
     price: string,
     inputProof: string
   ) => {
+    console.log('=== createInfo called ===');
+    console.log('Params:', { title, info, encryptedOwnerAddress, price, inputProof });
     return executeTransaction('createInfo', [
       title,
       info,
