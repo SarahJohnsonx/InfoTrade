@@ -34,14 +34,14 @@ export function CreateInfo() {
       // Note: For demo purposes, we're using placeholder values for encrypted data
       // In a real implementation, you would use Zama's encryption SDK here
       const encryptedOwnerAddress = "0x" + "0".repeat(64); // Placeholder
-      const encryptedPrice = "0x" + "0".repeat(64); // Placeholder
       const inputProof = "0x"; // Placeholder
+      const priceInWei = ethers.parseEther(formData.price);
 
       await createInfo(
         formData.title,
         formData.info,
         encryptedOwnerAddress,
-        encryptedPrice,
+        priceInWei.toString(),
         inputProof
       );
 

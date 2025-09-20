@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { useInfoContent } from '../hooks/useInfoTrade';
+import { useInfoContent, useInfoPrice } from '../hooks/useInfoTrade';
+import { ethers } from 'ethers';
 import type { InfoBasicDetails } from '../hooks/useInfoTrade';
 
 interface InfoCardProps {
@@ -22,6 +23,7 @@ export function InfoCard({
   onGrantAccess
 }: InfoCardProps) {
   const { content } = useInfoContent(infoId);
+  const { price } = useInfoPrice(infoId);
   const [showGrantForm, setShowGrantForm] = useState(false);
   const [buyerAddress, setBuyerAddress] = useState('');
 
@@ -108,12 +110,13 @@ export function InfoCard({
         </div>
       </div>
 
-      {/* Status */}
+      {/* Status and Price */}
       <div style={{
         display: 'flex',
         gap: '1rem',
         marginBottom: '1rem',
-        fontSize: '0.875rem'
+        fontSize: '0.875rem',
+        flexWrap: 'wrap'
       }}>
         <div style={{
           display: 'flex',
@@ -143,6 +146,17 @@ export function InfoCard({
           }} />
           {basicDetails.hasAccess ? '可访问' : '无权限'}
         </div>
+        {price && (
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.25rem',
+            color: '#7c3aed',
+            fontWeight: '600'
+          }}>
+            💰 {ethers.formatEther(price)} ETH
+          </div>
+        )}
       </div>
 
       {/* Content */}

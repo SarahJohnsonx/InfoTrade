@@ -1,4 +1,4 @@
-export const INFO_TRADE_ADDRESS = "0x6E3Aa958acE9d4A73A3295b8C6BB02b9dEaE855b" as const;
+export const INFO_TRADE_ADDRESS = "0xDc64a140Aa3E981100a9becA4E685f962f0cF6C9" as const;
 
 export const INFO_TRADE_ABI = [
   {
@@ -155,9 +155,9 @@ export const INFO_TRADE_ABI = [
         "type": "bytes32"
       },
       {
-        "internalType": "externalEuint64",
-        "name": "encryptedPrice",
-        "type": "bytes32"
+        "internalType": "uint256",
+        "name": "price",
+        "type": "uint256"
       },
       {
         "internalType": "bytes",
@@ -195,25 +195,6 @@ export const INFO_TRADE_ABI = [
     "outputs": [
       {
         "internalType": "eaddress",
-        "name": "",
-        "type": "bytes32"
-      }
-    ],
-    "stateMutability": "view",
-    "type": "function"
-  },
-  {
-    "inputs": [
-      {
-        "internalType": "uint256",
-        "name": "infoId",
-        "type": "uint256"
-      }
-    ],
-    "name": "getEncryptedPrice",
-    "outputs": [
-      {
-        "internalType": "euint64",
         "name": "",
         "type": "bytes32"
       }
@@ -279,6 +260,25 @@ export const INFO_TRADE_ABI = [
         "internalType": "string",
         "name": "",
         "type": "string"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "infoId",
+        "type": "uint256"
+      }
+    ],
+    "name": "getPrice",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
       }
     ],
     "stateMutability": "view",
@@ -427,9 +427,9 @@ export const INFO_TRADE_ABI = [
         "type": "bytes32"
       },
       {
-        "internalType": "euint64",
+        "internalType": "uint256",
         "name": "price",
-        "type": "bytes32"
+        "type": "uint256"
       },
       {
         "internalType": "bool",
@@ -484,14 +484,9 @@ export const INFO_TRADE_ABI = [
         "type": "uint256"
       },
       {
-        "internalType": "externalEuint64",
-        "name": "newEncryptedPrice",
-        "type": "bytes32"
-      },
-      {
-        "internalType": "bytes",
-        "name": "inputProof",
-        "type": "bytes"
+        "internalType": "uint256",
+        "name": "newPrice",
+        "type": "uint256"
       }
     ],
     "name": "updatePrice",

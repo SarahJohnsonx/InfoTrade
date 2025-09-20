@@ -120,6 +120,25 @@ export function useInfoContent(infoId: number) {
   };
 }
 
+// Get info price
+export function useInfoPrice(infoId: number) {
+  const { data, refetch } = useReadContracts({
+    contracts: infoId > 0 ? [
+      {
+        address: INFO_TRADE_ADDRESS,
+        abi: INFO_TRADE_ABI,
+        functionName: 'getPrice',
+        args: [BigInt(infoId)],
+      }
+    ] : [],
+  });
+
+  return {
+    price: data?.[0]?.result as bigint | undefined,
+    refetch,
+  };
+}
+
 // Write hooks using ethers
 export function useInfoTradeWrite() {
   const [loading, setLoading] = useState(false);
@@ -165,20 +184,21 @@ export function useInfoTradeWrite() {
     title: string,
     info: string,
     encryptedOwnerAddress: string,
-    encryptedPrice: string,
+    price: string,
     inputProof: string
   ) => {
     return executeTransaction('createInfo', [
       title,
       info,
       encryptedOwnerAddress,
-      encryptedPrice,
+      price,
       inputProof
     ]);
   }, [executeTransaction]);
 
-  const purchaseInfo = useCallback(async (infoId: number) => {
-    return executeTransaction('purchaseInfo', [BigInt(infoId)]);
+  const purchaseInfo = useCallback(async (infoId: number, price: string) => {
+    const value = ethers.parseEther(price);
+    return executeTransaction('purchaseInfo', [BigInt(infoId)], value.toString());
   }, [executeTransaction]);
 
   const grantAccess = useCallback(async (infoId: number, buyer: string) => {
@@ -187,13 +207,12 @@ export function useInfoTradeWrite() {
 
   const updatePrice = useCallback(async (
     infoId: number,
-    newEncryptedPrice: string,
-    inputProof: string
+    newPrice: string
   ) => {
+    const priceInWei = ethers.parseEther(newPrice);
     return executeTransaction('updatePrice', [
       BigInt(infoId),
-      newEncryptedPrice,
-      inputProof
+      priceInWei
     ]);
   }, [executeTransaction]);
 

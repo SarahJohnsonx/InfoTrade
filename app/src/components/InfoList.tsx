@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useAccount } from 'wagmi';
-import { useInfoTradeRead, useInfoBasicDetails, useInfoTradeWrite } from '../hooks/useInfoTrade';
+import { ethers } from 'ethers';
+import { useInfoTradeRead, useInfoBasicDetails, useInfoTradeWrite, useInfoPrice } from '../hooks/useInfoTrade';
 import { InfoCard } from './InfoCard';
 
 export function InfoList() {
@@ -22,9 +23,9 @@ export function InfoList() {
     return () => clearInterval(interval);
   }, [refetch]);
 
-  const handlePurchase = async (infoId: number) => {
+  const handlePurchase = async (infoId: number, price: string) => {
     try {
-      await purchaseInfo(infoId);
+      await purchaseInfo(infoId, price);
       forceRefresh();
       alert('购买成功！等待卖家确认后即可查看信息内容。');
     } catch (err) {
@@ -121,13 +122,14 @@ export function InfoList() {
 
 interface InfoListItemProps {
   infoId: number;
-  onPurchase: (infoId: number) => void;
+  onPurchase: (infoId: number, price: string) => void;
   onGrantAccess: (infoId: number, buyer: string) => void;
   userAddress?: string;
 }
 
 function InfoListItem({ infoId, onPurchase, onGrantAccess, userAddress }: InfoListItemProps) {
   const { data: basicDetails, refetch } = useInfoBasicDetails(infoId);
+  const { price } = useInfoPrice(infoId);
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -155,7 +157,7 @@ function InfoListItem({ infoId, onPurchase, onGrantAccess, userAddress }: InfoLi
   }
 
   const isOwner = userAddress?.toLowerCase() === basicDetails.owner.toLowerCase();
-  const canPurchase = !isOwner && !basicDetails.hasPurchased && basicDetails.isActive;
+  const canPurchase = !isOwner && !basicDetails.hasPurchased && basicDetails.isActive && price;
   const canGrantAccess = isOwner && basicDetails.hasPurchased && !basicDetails.hasAccess;
 
   return (
@@ -165,7 +167,7 @@ function InfoListItem({ infoId, onPurchase, onGrantAccess, userAddress }: InfoLi
       isOwner={isOwner}
       canPurchase={canPurchase}
       canGrantAccess={canGrantAccess}
-      onPurchase={() => onPurchase(infoId)}
+      onPurchase={() => price && onPurchase(infoId, ethers.formatEther(price))}
       onGrantAccess={(buyer) => onGrantAccess(infoId, buyer)}
     />
   );
