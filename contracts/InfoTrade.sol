@@ -1,295 +1,192 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
-import {FHE, eaddress, externalEaddress, euint64, externalEuint64, ebool} from "@fhevm/solidity/lib/FHE.sol";
-import {SepoliaConfig} from "@fhevm/solidity/config/ZamaConfig.sol";
+import { FHE, euint32, euint64, eaddress, externalEuint32, externalEuint64, externalEaddress } from "@fhevm/solidity/lib/FHE.sol";
+import { SepoliaConfig } from "@fhevm/solidity/config/ZamaConfig.sol";
 
-/// @title InfoTrade - Encrypted Information Trading Platform
-/// @notice A decentralized platform for buying and selling encrypted information using FHEVM
 contract InfoTrade is SepoliaConfig {
     struct InfoItem {
-        eaddress encryptedInfo;    // Encrypted information (string converted to address)
-        address seller;            // Information seller
-        uint256 price;            // Price in wei
-        bool isActive;            // Whether the item is available for sale
-        uint256 createdAt;        // Timestamp when created
+        string title;
+        string info;
+        eaddress encryptedOwner;
+        euint64 price;
+        bool isActive;
+        address owner;
+        uint256 createdAt;
+        mapping(address => bool) hasPurchased;
+        mapping(address => bool) hasAccess;
     }
-    
-    struct PurchaseRequest {
-        uint256 infoId;           // ID of the information item
-        address buyer;            // Address of the buyer
-        uint256 timestamp;        // When the request was made
-        bool isPending;           // Whether approval is pending
-        bool isApproved;          // Whether access was granted
-    }
-    
-    // State variables
+
     mapping(uint256 => InfoItem) public infoItems;
-    mapping(uint256 => mapping(address => PurchaseRequest)) public purchaseRequests;
-    mapping(uint256 => address[]) public purchaseRequestsList; // List of buyers for each info item
-    mapping(address => uint256[]) public sellerInfos; // Info IDs owned by each seller
-    mapping(address => uint256[]) public buyerRequests; // Request IDs for each buyer
-    
     uint256 public nextInfoId;
-    uint256 private constant PLATFORM_FEE_PERCENT = 2; // 2% platform fee
-    address public owner;
-    uint256 public platformBalance;
-    
-    // Events
-    event InfoUploaded(uint256 indexed infoId, address indexed seller, uint256 price);
-    event PurchaseRequested(uint256 indexed infoId, address indexed buyer);
-    event AccessGranted(uint256 indexed infoId, address indexed buyer, address indexed seller);
-    event AccessDenied(uint256 indexed infoId, address indexed buyer, address indexed seller);
-    event InfoDeactivated(uint256 indexed infoId, address indexed seller);
-    event PlatformFeeWithdrawn(address indexed owner, uint256 amount);
-    
-    // Modifiers
-    modifier onlyOwner() {
-        require(msg.sender == owner, "Only owner can call this function");
-        _;
-    }
-    
-    modifier onlyInfoSeller(uint256 _infoId) {
-        require(infoItems[_infoId].seller == msg.sender, "Only info seller can call this function");
-        _;
-    }
-    
-    modifier infoExists(uint256 _infoId) {
-        require(_infoId < nextInfoId && infoItems[_infoId].seller != address(0), "Info does not exist");
-        _;
-    }
-    
-    modifier infoActive(uint256 _infoId) {
-        require(infoItems[_infoId].isActive, "Info is not active");
-        _;
-    }
-    
+
+    mapping(address => uint256[]) public userInfoItems;
+    mapping(address => uint256[]) public userPurchases;
+
+    event InfoCreated(uint256 indexed infoId, address indexed owner, string title, uint256 timestamp);
+    event InfoPurchased(uint256 indexed infoId, address indexed buyer, address indexed seller, uint256 timestamp);
+    event AccessGranted(uint256 indexed infoId, address indexed buyer, uint256 timestamp);
+    event InfoUpdated(uint256 indexed infoId, uint256 newPrice, uint256 timestamp);
+    event InfoDeactivated(uint256 indexed infoId, uint256 timestamp);
+
     constructor() {
-        owner = msg.sender;
-        nextInfoId = 1; // Start from 1 to avoid confusion with default values
+        nextInfoId = 1;
     }
-    
-    /// @notice Upload encrypted information for sale
-    /// @param encryptedInfo The encrypted information (external input)
-    /// @param inputProof Proof for the encrypted input
-    /// @param price Price in wei for accessing this information
-    function uploadInfo(
-        externalEaddress encryptedInfo, 
-        bytes calldata inputProof,
-        uint256 price
+
+    function createInfo(
+        string memory title,
+        string memory info,
+        externalEaddress encryptedOwnerAddress,
+        externalEuint64 encryptedPrice,
+        bytes calldata inputProof
     ) external {
-        require(price > 0, "Price must be greater than 0");
-        
-        // Convert external encrypted input to internal format
-        eaddress info = FHE.fromExternal(encryptedInfo, inputProof);
-        
+        require(bytes(title).length > 0, "Title cannot be empty");
+        require(bytes(info).length > 0, "Info cannot be empty");
+
+        eaddress ownerAddress = FHE.fromExternal(encryptedOwnerAddress, inputProof);
+        euint64 price = FHE.fromExternal(encryptedPrice, inputProof);
+
         uint256 infoId = nextInfoId++;
-        
-        // Store the info item
-        infoItems[infoId] = InfoItem({
-            encryptedInfo: info,
-            seller: msg.sender,
-            price: price,
-            isActive: true,
-            createdAt: block.timestamp
-        });
-        
-        // Set up access control - only seller can initially access
-        FHE.allowThis(info);
-        FHE.allow(info, msg.sender);
-        
-        // Add to seller's list
-        sellerInfos[msg.sender].push(infoId);
-        
-        emit InfoUploaded(infoId, msg.sender, price);
+
+        InfoItem storage newInfo = infoItems[infoId];
+        newInfo.title = title;
+        newInfo.info = info;
+        newInfo.encryptedOwner = ownerAddress;
+        newInfo.price = price;
+        newInfo.isActive = true;
+        newInfo.owner = msg.sender;
+        newInfo.createdAt = block.timestamp;
+        newInfo.hasAccess[msg.sender] = true;
+
+        FHE.allowThis(ownerAddress);
+        FHE.allow(ownerAddress, msg.sender);
+        FHE.allowThis(price);
+        FHE.allow(price, msg.sender);
+
+        userInfoItems[msg.sender].push(infoId);
+
+        emit InfoCreated(infoId, msg.sender, title, block.timestamp);
     }
-    
-    /// @notice Request to purchase access to encrypted information
-    /// @param infoId ID of the information to purchase
-    function requestPurchase(uint256 infoId) 
-        external 
-        payable 
-        infoExists(infoId) 
-        infoActive(infoId)
-    {
-        InfoItem storage item = infoItems[infoId];
-        require(msg.sender != item.seller, "Cannot purchase own info");
-        require(msg.value >= item.price, "Insufficient payment");
-        require(!purchaseRequests[infoId][msg.sender].isPending, "Purchase already pending");
-        require(!purchaseRequests[infoId][msg.sender].isApproved, "Already have access");
-        
-        // Create purchase request
-        purchaseRequests[infoId][msg.sender] = PurchaseRequest({
-            infoId: infoId,
-            buyer: msg.sender,
-            timestamp: block.timestamp,
-            isPending: true,
-            isApproved: false
-        });
-        
-        // Add to lists for tracking
-        purchaseRequestsList[infoId].push(msg.sender);
-        buyerRequests[msg.sender].push(infoId);
-        
-        // Funds are held in contract until approval/denial
-        
-        emit PurchaseRequested(infoId, msg.sender);
+
+    function purchaseInfo(uint256 infoId) external payable {
+        require(infoId < nextInfoId && infoId > 0, "Invalid info ID");
+        require(infoItems[infoId].isActive, "Info is not active");
+        require(infoItems[infoId].owner != msg.sender, "Cannot purchase your own info");
+        require(!infoItems[infoId].hasPurchased[msg.sender], "Already purchased");
+
+        address seller = infoItems[infoId].owner;
+
+        euint64 encryptedPrice = infoItems[infoId].price;
+        FHE.allowThis(encryptedPrice);
+
+        infoItems[infoId].hasPurchased[msg.sender] = true;
+        userPurchases[msg.sender].push(infoId);
+
+        FHE.allow(encryptedPrice, msg.sender);
+        FHE.allow(infoItems[infoId].encryptedOwner, msg.sender);
+
+        emit InfoPurchased(infoId, msg.sender, seller, block.timestamp);
     }
-    
-    /// @notice Approve access to information for a buyer
-    /// @param infoId ID of the information
-    /// @param buyer Address of the buyer
-    function grantAccess(uint256 infoId, address buyer) 
-        external 
-        onlyInfoSeller(infoId) 
-        infoExists(infoId)
-    {
-        PurchaseRequest storage request = purchaseRequests[infoId][buyer];
-        require(request.isPending, "No pending request from this buyer");
-        
-        InfoItem storage item = infoItems[infoId];
-        
-        // Calculate platform fee
-        uint256 fee = (item.price * PLATFORM_FEE_PERCENT) / 100;
-        uint256 sellerAmount = item.price - fee;
-        
-        // Update request status
-        request.isPending = false;
-        request.isApproved = true;
-        
-        // Grant access to encrypted information
-        FHE.allow(item.encryptedInfo, buyer);
-        
-        // Transfer payments
-        platformBalance += fee;
-        payable(msg.sender).transfer(sellerAmount);
-        
-        emit AccessGranted(infoId, buyer, msg.sender);
+
+    function grantAccess(uint256 infoId, address buyer) external {
+        require(infoId < nextInfoId && infoId > 0, "Invalid info ID");
+        require(infoItems[infoId].owner == msg.sender, "Only owner can grant access");
+        require(infoItems[infoId].hasPurchased[buyer], "Buyer has not purchased");
+        require(!infoItems[infoId].hasAccess[buyer], "Access already granted");
+
+        infoItems[infoId].hasAccess[buyer] = true;
+
+        FHE.allow(infoItems[infoId].encryptedOwner, buyer);
+        FHE.allow(infoItems[infoId].price, buyer);
+
+        emit AccessGranted(infoId, buyer, block.timestamp);
     }
-    
-    /// @notice Deny access to information for a buyer (refund payment)
-    /// @param infoId ID of the information
-    /// @param buyer Address of the buyer
-    function denyAccess(uint256 infoId, address buyer) 
-        external 
-        onlyInfoSeller(infoId) 
-        infoExists(infoId)
-    {
-        PurchaseRequest storage request = purchaseRequests[infoId][buyer];
-        require(request.isPending, "No pending request from this buyer");
-        
-        InfoItem storage item = infoItems[infoId];
-        
-        // Update request status
-        request.isPending = false;
-        request.isApproved = false;
-        
-        // Refund the buyer
-        payable(buyer).transfer(item.price);
-        
-        emit AccessDenied(infoId, buyer, msg.sender);
+
+    function updatePrice(
+        uint256 infoId,
+        externalEuint64 newEncryptedPrice,
+        bytes calldata inputProof
+    ) external {
+        require(infoId < nextInfoId && infoId > 0, "Invalid info ID");
+        require(infoItems[infoId].owner == msg.sender, "Only owner can update price");
+        require(infoItems[infoId].isActive, "Info is not active");
+
+        euint64 newPrice = FHE.fromExternal(newEncryptedPrice, inputProof);
+        infoItems[infoId].price = newPrice;
+
+        FHE.allowThis(newPrice);
+        FHE.allow(newPrice, msg.sender);
+
+        emit InfoUpdated(infoId, 0, block.timestamp);
     }
-    
-    /// @notice Deactivate an information item (no longer for sale)
-    /// @param infoId ID of the information to deactivate
-    function deactivateInfo(uint256 infoId) 
-        external 
-        onlyInfoSeller(infoId) 
-        infoExists(infoId)
-    {
+
+    function deactivateInfo(uint256 infoId) external {
+        require(infoId < nextInfoId && infoId > 0, "Invalid info ID");
+        require(infoItems[infoId].owner == msg.sender, "Only owner can deactivate");
+        require(infoItems[infoId].isActive, "Info already inactive");
+
         infoItems[infoId].isActive = false;
-        emit InfoDeactivated(infoId, msg.sender);
+
+        emit InfoDeactivated(infoId, block.timestamp);
     }
-    
-    /// @notice Get encrypted information (only accessible by authorized users)
-    /// @param infoId ID of the information
-    /// @return The encrypted information
-    function getEncryptedInfo(uint256 infoId) 
-        external 
-        view 
-        infoExists(infoId) 
-        returns (eaddress) 
-    {
-        return infoItems[infoId].encryptedInfo;
+
+    function getInfoBasicDetails(uint256 infoId) external view returns (
+        string memory title,
+        address owner,
+        bool isActive,
+        uint256 createdAt,
+        bool hasPurchased,
+        bool hasAccess
+    ) {
+        require(infoId < nextInfoId && infoId > 0, "Invalid info ID");
+
+        InfoItem storage info = infoItems[infoId];
+        return (
+            info.title,
+            info.owner,
+            info.isActive,
+            info.createdAt,
+            info.hasPurchased[msg.sender],
+            info.hasAccess[msg.sender]
+        );
     }
-    
-    /// @notice Get basic info about an information item
-    /// @param infoId ID of the information
-    /// @return seller, price, isActive, createdAt
-    function getInfoBasics(uint256 infoId) 
-        external 
-        view 
-        infoExists(infoId) 
-        returns (address, uint256, bool, uint256) 
-    {
-        InfoItem storage item = infoItems[infoId];
-        return (item.seller, item.price, item.isActive, item.createdAt);
+
+    function getInfoContent(uint256 infoId) external view returns (string memory) {
+        require(infoId < nextInfoId && infoId > 0, "Invalid info ID");
+        require(infoItems[infoId].hasAccess[msg.sender], "No access to this info");
+
+        return infoItems[infoId].info;
     }
-    
-    /// @notice Get purchase request status
-    /// @param infoId ID of the information
-    /// @param buyer Address of the buyer
-    /// @return isPending, isApproved, timestamp
-    function getPurchaseRequestStatus(uint256 infoId, address buyer)
-        external
-        view
-        returns (bool, bool, uint256)
-    {
-        PurchaseRequest storage request = purchaseRequests[infoId][buyer];
-        return (request.isPending, request.isApproved, request.timestamp);
+
+    function getEncryptedPrice(uint256 infoId) external view returns (euint64) {
+        require(infoId < nextInfoId && infoId > 0, "Invalid info ID");
+        return infoItems[infoId].price;
     }
-    
-    /// @notice Get all info IDs owned by a seller
-    /// @param seller Address of the seller
-    /// @return Array of info IDs
-    function getSellerInfos(address seller) external view returns (uint256[] memory) {
-        return sellerInfos[seller];
+
+    function getEncryptedOwner(uint256 infoId) external view returns (eaddress) {
+        require(infoId < nextInfoId && infoId > 0, "Invalid info ID");
+        return infoItems[infoId].encryptedOwner;
     }
-    
-    /// @notice Get all pending purchase requests for an info item
-    /// @param infoId ID of the information
-    /// @return Array of buyer addresses with pending requests
-    function getPendingRequests(uint256 infoId) 
-        external 
-        view 
-        onlyInfoSeller(infoId)
-        returns (address[] memory) 
-    {
-        address[] storage allBuyers = purchaseRequestsList[infoId];
-        
-        // Count pending requests
-        uint256 pendingCount = 0;
-        for (uint256 i = 0; i < allBuyers.length; i++) {
-            if (purchaseRequests[infoId][allBuyers[i]].isPending) {
-                pendingCount++;
-            }
-        }
-        
-        // Create array of pending buyers
-        address[] memory pendingBuyers = new address[](pendingCount);
-        uint256 index = 0;
-        for (uint256 i = 0; i < allBuyers.length; i++) {
-            if (purchaseRequests[infoId][allBuyers[i]].isPending) {
-                pendingBuyers[index] = allBuyers[i];
-                index++;
-            }
-        }
-        
-        return pendingBuyers;
+
+    function getUserInfoItems(address user) external view returns (uint256[] memory) {
+        return userInfoItems[user];
     }
-    
-    /// @notice Withdraw platform fees (only owner)
-    function withdrawPlatformFees() external onlyOwner {
-        require(platformBalance > 0, "No fees to withdraw");
-        uint256 amount = platformBalance;
-        platformBalance = 0;
-        payable(owner).transfer(amount);
-        emit PlatformFeeWithdrawn(owner, amount);
+
+    function getUserPurchases(address user) external view returns (uint256[] memory) {
+        return userPurchases[user];
     }
-    
-    /// @notice Get platform statistics
-    /// @return nextInfoId, platformBalance
-    function getPlatformStats() external view returns (uint256, uint256) {
-        return (nextInfoId, platformBalance);
+
+    function getTotalInfoCount() external view returns (uint256) {
+        return nextInfoId - 1;
+    }
+
+    function hasUserPurchased(uint256 infoId, address user) external view returns (bool) {
+        require(infoId < nextInfoId && infoId > 0, "Invalid info ID");
+        return infoItems[infoId].hasPurchased[user];
+    }
+
+    function hasUserAccess(uint256 infoId, address user) external view returns (bool) {
+        require(infoId < nextInfoId && infoId > 0, "Invalid info ID");
+        return infoItems[infoId].hasAccess[user];
     }
 }
