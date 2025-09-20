@@ -1,14 +1,17 @@
-export const INFO_TRADE_ADDRESS = "0x5FbDB2315678afecb367f032d93F642f64180aa3" as const;
+// InfoTrade contract deployed on localhost
+export const CONTRACT_ADDRESS = '0x5FbDB2315678afecb367f032d93F642f64180aa3';
 
-export const INFO_TRADE_ABI = [
-  {
-    "inputs": [],
-    "stateMutability": "nonpayable",
-    "type": "constructor"
-  },
+// Generated ABI from contract artifacts - Auto-synced from InfoTrade.json
+export const CONTRACT_ABI = [
   {
     "anonymous": false,
     "inputs": [
+      {
+        "indexed": true,
+        "internalType": "uint256",
+        "name": "requestId",
+        "type": "uint256"
+      },
       {
         "indexed": true,
         "internalType": "uint256",
@@ -18,17 +21,67 @@ export const INFO_TRADE_ABI = [
       {
         "indexed": true,
         "internalType": "address",
-        "name": "buyer",
+        "name": "requester",
+        "type": "address"
+      }
+    ],
+    "name": "AccessApproved",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "uint256",
+        "name": "requestId",
+        "type": "uint256"
+      },
+      {
+        "indexed": true,
+        "internalType": "uint256",
+        "name": "infoId",
+        "type": "uint256"
+      },
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "requester",
+        "type": "address"
+      }
+    ],
+    "name": "AccessDenied",
+    "type": "event"
+  },
+  {
+    "anonymous": false,
+    "inputs": [
+      {
+        "indexed": true,
+        "internalType": "uint256",
+        "name": "requestId",
+        "type": "uint256"
+      },
+      {
+        "indexed": true,
+        "internalType": "uint256",
+        "name": "infoId",
+        "type": "uint256"
+      },
+      {
+        "indexed": true,
+        "internalType": "address",
+        "name": "requester",
         "type": "address"
       },
       {
         "indexed": false,
         "internalType": "uint256",
-        "name": "timestamp",
+        "name": "amount",
         "type": "uint256"
       }
     ],
-    "name": "AccessGranted",
+    "name": "AccessRequested",
     "type": "event"
   },
   {
@@ -49,125 +102,113 @@ export const INFO_TRADE_ABI = [
       {
         "indexed": false,
         "internalType": "string",
-        "name": "title",
+        "name": "name",
         "type": "string"
       },
       {
         "indexed": false,
-        "internalType": "uint256",
-        "name": "timestamp",
-        "type": "uint256"
-      }
-    ],
-    "name": "InfoCreated",
-    "type": "event"
-  },
-  {
-    "anonymous": false,
-    "inputs": [
-      {
-        "indexed": true,
-        "internalType": "uint256",
-        "name": "infoId",
-        "type": "uint256"
-      },
-      {
-        "indexed": false,
-        "internalType": "uint256",
-        "name": "timestamp",
-        "type": "uint256"
-      }
-    ],
-    "name": "InfoDeactivated",
-    "type": "event"
-  },
-  {
-    "anonymous": false,
-    "inputs": [
-      {
-        "indexed": true,
-        "internalType": "uint256",
-        "name": "infoId",
-        "type": "uint256"
-      },
-      {
-        "indexed": true,
-        "internalType": "address",
-        "name": "buyer",
-        "type": "address"
-      },
-      {
-        "indexed": true,
-        "internalType": "address",
-        "name": "seller",
-        "type": "address"
-      },
-      {
-        "indexed": false,
-        "internalType": "uint256",
-        "name": "timestamp",
-        "type": "uint256"
-      }
-    ],
-    "name": "InfoPurchased",
-    "type": "event"
-  },
-  {
-    "anonymous": false,
-    "inputs": [
-      {
-        "indexed": true,
-        "internalType": "uint256",
-        "name": "infoId",
-        "type": "uint256"
-      },
-      {
-        "indexed": false,
-        "internalType": "uint256",
-        "name": "newPrice",
-        "type": "uint256"
-      },
-      {
-        "indexed": false,
-        "internalType": "uint256",
-        "name": "timestamp",
-        "type": "uint256"
-      }
-    ],
-    "name": "InfoUpdated",
-    "type": "event"
-  },
-  {
-    "inputs": [
-      {
-        "internalType": "string",
-        "name": "title",
-        "type": "string"
-      },
-      {
-        "internalType": "string",
-        "name": "info",
-        "type": "string"
-      },
-      {
-        "internalType": "externalEaddress",
-        "name": "encryptedOwnerAddress",
-        "type": "bytes32"
-      },
-      {
         "internalType": "uint256",
         "name": "price",
         "type": "uint256"
+      }
+    ],
+    "name": "InfoStored",
+    "type": "event"
+  },
+  {
+    "inputs": [],
+    "name": "ACCESS_PRICE",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "name": "accessRequests",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "infoId",
+        "type": "uint256"
       },
       {
-        "internalType": "bytes",
-        "name": "inputProof",
-        "type": "bytes"
+        "internalType": "address",
+        "name": "requester",
+        "type": "address"
+      },
+      {
+        "internalType": "uint256",
+        "name": "amount",
+        "type": "uint256"
+      },
+      {
+        "internalType": "bool",
+        "name": "isPending",
+        "type": "bool"
+      },
+      {
+        "internalType": "bool",
+        "name": "isApproved",
+        "type": "bool"
+      },
+      {
+        "internalType": "uint256",
+        "name": "createdAt",
+        "type": "uint256"
       }
     ],
-    "name": "createInfo",
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "requestId",
+        "type": "uint256"
+      }
+    ],
+    "name": "approveAccess",
     "outputs": [],
     "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint256",
+        "name": "requestId",
+        "type": "uint256"
+      }
+    ],
+    "name": "denyAccess",
+    "outputs": [],
+    "stateMutability": "nonpayable",
+    "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "getAllInfos",
+    "outputs": [
+      {
+        "internalType": "uint256[]",
+        "name": "",
+        "type": "uint256[]"
+      }
+    ],
+    "stateMutability": "view",
     "type": "function"
   },
   {
@@ -178,20 +219,7 @@ export const INFO_TRADE_ABI = [
         "type": "uint256"
       }
     ],
-    "name": "deactivateInfo",
-    "outputs": [],
-    "stateMutability": "nonpayable",
-    "type": "function"
-  },
-  {
-    "inputs": [
-      {
-        "internalType": "uint256",
-        "name": "infoId",
-        "type": "uint256"
-      }
-    ],
-    "name": "getEncryptedOwner",
+    "name": "getEncryptedAddress",
     "outputs": [
       {
         "internalType": "eaddress",
@@ -210,37 +238,68 @@ export const INFO_TRADE_ABI = [
         "type": "uint256"
       }
     ],
-    "name": "getInfoBasicDetails",
+    "name": "getInfo",
     "outputs": [
       {
-        "internalType": "string",
-        "name": "title",
-        "type": "string"
-      },
+        "components": [
+          {
+            "internalType": "uint256",
+            "name": "id",
+            "type": "uint256"
+          },
+          {
+            "internalType": "string",
+            "name": "name",
+            "type": "string"
+          },
+          {
+            "internalType": "string",
+            "name": "info",
+            "type": "string"
+          },
+          {
+            "internalType": "eaddress",
+            "name": "encryptedAddress",
+            "type": "bytes32"
+          },
+          {
+            "internalType": "address",
+            "name": "owner",
+            "type": "address"
+          },
+          {
+            "internalType": "uint256",
+            "name": "price",
+            "type": "uint256"
+          },
+          {
+            "internalType": "uint256",
+            "name": "createdAt",
+            "type": "uint256"
+          }
+        ],
+        "internalType": "struct InfoTrade.InfoItem",
+        "name": "",
+        "type": "tuple"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
       {
         "internalType": "address",
         "name": "owner",
         "type": "address"
-      },
+      }
+    ],
+    "name": "getOwnerPendingRequests",
+    "outputs": [
       {
-        "internalType": "bool",
-        "name": "isActive",
-        "type": "bool"
-      },
-      {
-        "internalType": "uint256",
-        "name": "createdAt",
-        "type": "uint256"
-      },
-      {
-        "internalType": "bool",
-        "name": "hasPurchased",
-        "type": "bool"
-      },
-      {
-        "internalType": "bool",
-        "name": "hasAccess",
-        "type": "bool"
+        "internalType": "uint256[]",
+        "name": "",
+        "type": "uint256[]"
       }
     ],
     "stateMutability": "view",
@@ -249,49 +308,17 @@ export const INFO_TRADE_ABI = [
   {
     "inputs": [
       {
-        "internalType": "uint256",
-        "name": "infoId",
-        "type": "uint256"
+        "internalType": "address",
+        "name": "owner",
+        "type": "address"
       }
     ],
-    "name": "getInfoContent",
+    "name": "getPendingRequests",
     "outputs": [
       {
-        "internalType": "string",
+        "internalType": "uint256[]",
         "name": "",
-        "type": "string"
-      }
-    ],
-    "stateMutability": "view",
-    "type": "function"
-  },
-  {
-    "inputs": [
-      {
-        "internalType": "uint256",
-        "name": "infoId",
-        "type": "uint256"
-      }
-    ],
-    "name": "getPrice",
-    "outputs": [
-      {
-        "internalType": "uint256",
-        "name": "",
-        "type": "uint256"
-      }
-    ],
-    "stateMutability": "view",
-    "type": "function"
-  },
-  {
-    "inputs": [],
-    "name": "getTotalInfoCount",
-    "outputs": [
-      {
-        "internalType": "uint256",
-        "name": "",
-        "type": "uint256"
+        "type": "uint256[]"
       }
     ],
     "stateMutability": "view",
@@ -324,7 +351,7 @@ export const INFO_TRADE_ABI = [
         "type": "address"
       }
     ],
-    "name": "getUserPurchases",
+    "name": "getUserRequests",
     "outputs": [
       {
         "internalType": "uint256[]",
@@ -339,34 +366,16 @@ export const INFO_TRADE_ABI = [
     "inputs": [
       {
         "internalType": "uint256",
-        "name": "infoId",
+        "name": "",
         "type": "uint256"
       },
       {
         "internalType": "address",
-        "name": "buyer",
+        "name": "",
         "type": "address"
       }
     ],
-    "name": "grantAccess",
-    "outputs": [],
-    "stateMutability": "nonpayable",
-    "type": "function"
-  },
-  {
-    "inputs": [
-      {
-        "internalType": "uint256",
-        "name": "infoId",
-        "type": "uint256"
-      },
-      {
-        "internalType": "address",
-        "name": "user",
-        "type": "address"
-      }
-    ],
-    "name": "hasUserAccess",
+    "name": "hasAccess",
     "outputs": [
       {
         "internalType": "bool",
@@ -390,7 +399,7 @@ export const INFO_TRADE_ABI = [
         "type": "address"
       }
     ],
-    "name": "hasUserPurchased",
+    "name": "hasAccessToInfo",
     "outputs": [
       {
         "internalType": "bool",
@@ -412,8 +421,13 @@ export const INFO_TRADE_ABI = [
     "name": "infoItems",
     "outputs": [
       {
+        "internalType": "uint256",
+        "name": "id",
+        "type": "uint256"
+      },
+      {
         "internalType": "string",
-        "name": "title",
+        "name": "name",
         "type": "string"
       },
       {
@@ -423,23 +437,18 @@ export const INFO_TRADE_ABI = [
       },
       {
         "internalType": "eaddress",
-        "name": "encryptedOwner",
+        "name": "encryptedAddress",
         "type": "bytes32"
-      },
-      {
-        "internalType": "uint256",
-        "name": "price",
-        "type": "uint256"
-      },
-      {
-        "internalType": "bool",
-        "name": "isActive",
-        "type": "bool"
       },
       {
         "internalType": "address",
         "name": "owner",
         "type": "address"
+      },
+      {
+        "internalType": "uint256",
+        "name": "price",
+        "type": "uint256"
       },
       {
         "internalType": "uint256",
@@ -464,16 +473,40 @@ export const INFO_TRADE_ABI = [
     "type": "function"
   },
   {
-    "inputs": [
+    "inputs": [],
+    "name": "nextRequestId",
+    "outputs": [
       {
         "internalType": "uint256",
-        "name": "infoId",
+        "name": "",
         "type": "uint256"
       }
     ],
-    "name": "purchaseInfo",
-    "outputs": [],
-    "stateMutability": "payable",
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "address",
+        "name": "",
+        "type": "address"
+      },
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "name": "ownerPendingRequests",
+    "outputs": [
+      {
+        "internalType": "uint256",
+        "name": "",
+        "type": "uint256"
+      }
+    ],
+    "stateMutability": "view",
     "type": "function"
   },
   {
@@ -482,14 +515,37 @@ export const INFO_TRADE_ABI = [
         "internalType": "uint256",
         "name": "infoId",
         "type": "uint256"
-      },
-      {
-        "internalType": "uint256",
-        "name": "newPrice",
-        "type": "uint256"
       }
     ],
-    "name": "updatePrice",
+    "name": "requestAccess",
+    "outputs": [],
+    "stateMutability": "payable",
+    "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "string",
+        "name": "name",
+        "type": "string"
+      },
+      {
+        "internalType": "string",
+        "name": "info",
+        "type": "string"
+      },
+      {
+        "internalType": "externalEaddress",
+        "name": "encryptedAddress",
+        "type": "bytes32"
+      },
+      {
+        "internalType": "bytes",
+        "name": "inputProof",
+        "type": "bytes"
+      }
+    ],
+    "name": "storeInfo",
     "outputs": [],
     "stateMutability": "nonpayable",
     "type": "function"
@@ -531,7 +587,7 @@ export const INFO_TRADE_ABI = [
         "type": "uint256"
       }
     ],
-    "name": "userPurchases",
+    "name": "userRequests",
     "outputs": [
       {
         "internalType": "uint256",
@@ -543,8 +599,3 @@ export const INFO_TRADE_ABI = [
     "type": "function"
   }
 ] as const;
-
-export type InfoTradeContract = {
-  address: typeof INFO_TRADE_ADDRESS;
-  abi: typeof INFO_TRADE_ABI;
-};

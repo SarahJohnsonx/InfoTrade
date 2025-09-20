@@ -1,0 +1,63 @@
+.infotrade-app {
+  min-height: 100vh;
+  background-color: #f9fafb;
+}
+
+.main-content {
+  max-width: 56rem;
+  margin: 0 auto;
+  padding: 2rem 1rem;
+}
+
+.connect-wallet-container {
+  text-align: center;
+  padding: 3rem 0;
+}
+
+.connect-wallet-title {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: #111827;
+  margin-bottom: 1rem;
+}
+
+.connect-wallet-description {
+  color: #4b5563;
+  margin-bottom: 2rem;
+}
+
+.tab-navigation {
+  margin-bottom: 2rem;
+}
+
+.tab-nav {
+  display: flex;
+  gap: 2rem;
+}
+
+.tab-button {
+  padding: 0.5rem 0.25rem;
+  border-bottom: 2px solid transparent;
+  font-weight: 500;
+  font-size: 0.875rem;
+  background: none;
+  border-top: none;
+  border-left: none;
+  border-right: none;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.tab-button.active {
+  border-bottom-color: #3b82f6;
+  color: #2563eb;
+}
+
+.tab-button.inactive {
+  color: #6b7280;
+}
+
+.tab-button.inactive:hover {
+  color: #374151;
+  border-bottom-color: #d1d5db;
+}

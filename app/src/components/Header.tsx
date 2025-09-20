@@ -11,7 +11,7 @@ export function Header() {
               InfoTrade
             </h1>
             <span className="header-badge">
-              链上信息交易
+              Encrypted Info Trading
             </span>
           </div>
           <ConnectButton />
