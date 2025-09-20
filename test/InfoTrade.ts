@@ -1,503 +1,394 @@
 import { HardhatEthersSigner } from "@nomicfoundation/hardhat-ethers/signers";
 import { ethers, fhevm } from "hardhat";
-import { InfoTrade, InfoTrade__factory, InfoEncoder, InfoEncoder__factory } from "../types";
+import { InfoTrade, InfoTrade__factory } from "../types";
 import { expect } from "chai";
 import { FhevmType } from "@fhevm/hardhat-plugin";
 
 type Signers = {
   deployer: HardhatEthersSigner;
-  seller: HardhatEthersSigner;
-  buyer1: HardhatEthersSigner;
-  buyer2: HardhatEthersSigner;
+  alice: HardhatEthersSigner;
+  bob: HardhatEthersSigner;
+  carol: HardhatEthersSigner;
 };
 
 async function deployFixture() {
-  // Deploy InfoTrade contract
-  const infoTradeFactory = (await ethers.getContractFactory("InfoTrade")) as InfoTrade__factory;
-  const infoTradeContract = (await infoTradeFactory.deploy()) as InfoTrade;
+  const factory = (await ethers.getContractFactory("InfoTrade")) as InfoTrade__factory;
+  const infoTradeContract = (await factory.deploy()) as InfoTrade;
   const infoTradeContractAddress = await infoTradeContract.getAddress();
 
-  // Deploy InfoEncoder contract
-  const infoEncoderFactory = (await ethers.getContractFactory("InfoEncoder")) as InfoEncoder__factory;
-  const infoEncoderContract = (await infoEncoderFactory.deploy()) as InfoEncoder;
-  const infoEncoderContractAddress = await infoEncoderContract.getAddress();
-
-  return {
-    infoTradeContract,
-    infoTradeContractAddress,
-    infoEncoderContract,
-    infoEncoderContractAddress,
-  };
+  return { infoTradeContract, infoTradeContractAddress };
 }
 
 describe("InfoTrade", function () {
   let signers: Signers;
   let infoTradeContract: InfoTrade;
   let infoTradeContractAddress: string;
-  let infoEncoderContract: InfoEncoder;
-  let infoEncoderContractAddress: string;
-
-  const testMessage = "This is secret information worth 1 ETH";
-  const testPrice = ethers.parseEther("1.0"); // 1 ETH
 
   before(async function () {
     const ethSigners: HardhatEthersSigner[] = await ethers.getSigners();
     signers = {
       deployer: ethSigners[0],
-      seller: ethSigners[1],
-      buyer1: ethSigners[2],
-      buyer2: ethSigners[3],
+      alice: ethSigners[1],
+      bob: ethSigners[2],
+      carol: ethSigners[3]
     };
   });
 
   beforeEach(async function () {
-    // Check whether the tests are running against an FHEVM mock environment
     if (!fhevm.isMock) {
       console.warn(`This hardhat test suite cannot run on Sepolia Testnet`);
       this.skip();
     }
 
-    ({
-      infoTradeContract,
+    ({ infoTradeContract, infoTradeContractAddress } = await deployFixture());
+  });
+
+  it("should deploy with initial state", async function () {
+    const totalInfoCount = await infoTradeContract.getTotalInfoCount();
+    expect(totalInfoCount).to.eq(0);
+
+    const nextInfoId = await infoTradeContract.nextInfoId();
+    expect(nextInfoId).to.eq(1);
+  });
+
+  it("should create info item successfully", async function () {
+    const title = "Secret Algorithm";
+    const info = "This is a secret trading algorithm";
+    const price = 1000000;
+
+    const encryptedInput = await fhevm
+      .createEncryptedInput(infoTradeContractAddress, signers.alice.address)
+      .addAddress(signers.alice.address)
+      .add64(price)
+      .encrypt();
+
+    const tx = await infoTradeContract
+      .connect(signers.alice)
+      .createInfo(
+        title,
+        info,
+        encryptedInput.handles[0],
+        encryptedInput.handles[1],
+        encryptedInput.inputProof
+      );
+
+    await tx.wait();
+
+    const totalInfoCount = await infoTradeContract.getTotalInfoCount();
+    expect(totalInfoCount).to.eq(1);
+
+    const basicDetails = await infoTradeContract
+      .connect(signers.alice)
+      .getInfoBasicDetails(1);
+
+    expect(basicDetails.title).to.eq(title);
+    expect(basicDetails.owner).to.eq(signers.alice.address);
+    expect(basicDetails.isActive).to.eq(true);
+    expect(basicDetails.hasAccess).to.eq(true);
+    expect(basicDetails.hasPurchased).to.eq(false);
+
+    const content = await infoTradeContract
+      .connect(signers.alice)
+      .getInfoContent(1);
+    expect(content).to.eq(info);
+  });
+
+  it("should allow purchasing info", async function () {
+    const title = "Market Insights";
+    const info = "Confidential market analysis";
+    const price = 500000;
+
+    const encryptedInput = await fhevm
+      .createEncryptedInput(infoTradeContractAddress, signers.alice.address)
+      .addAddress(signers.alice.address)
+      .add64(price)
+      .encrypt();
+
+    await infoTradeContract
+      .connect(signers.alice)
+      .createInfo(
+        title,
+        info,
+        encryptedInput.handles[0],
+        encryptedInput.handles[1],
+        encryptedInput.inputProof
+      );
+
+    const tx = await infoTradeContract
+      .connect(signers.bob)
+      .purchaseInfo(1);
+
+    await tx.wait();
+
+    const basicDetails = await infoTradeContract
+      .connect(signers.bob)
+      .getInfoBasicDetails(1);
+
+    expect(basicDetails.hasPurchased).to.eq(true);
+    expect(basicDetails.hasAccess).to.eq(false);
+
+    const hasPurchased = await infoTradeContract.hasUserPurchased(1, signers.bob.address);
+    expect(hasPurchased).to.eq(true);
+
+    const hasAccess = await infoTradeContract.hasUserAccess(1, signers.bob.address);
+    expect(hasAccess).to.eq(false);
+  });
+
+  it("should grant access after purchase", async function () {
+    const title = "Trading Secrets";
+    const info = "Advanced trading strategies";
+    const price = 750000;
+
+    const encryptedInput = await fhevm
+      .createEncryptedInput(infoTradeContractAddress, signers.alice.address)
+      .addAddress(signers.alice.address)
+      .add64(price)
+      .encrypt();
+
+    await infoTradeContract
+      .connect(signers.alice)
+      .createInfo(
+        title,
+        info,
+        encryptedInput.handles[0],
+        encryptedInput.handles[1],
+        encryptedInput.inputProof
+      );
+
+    await infoTradeContract
+      .connect(signers.bob)
+      .purchaseInfo(1);
+
+    const tx = await infoTradeContract
+      .connect(signers.alice)
+      .grantAccess(1, signers.bob.address);
+
+    await tx.wait();
+
+    const hasAccess = await infoTradeContract.hasUserAccess(1, signers.bob.address);
+    expect(hasAccess).to.eq(true);
+
+    const content = await infoTradeContract
+      .connect(signers.bob)
+      .getInfoContent(1);
+    expect(content).to.eq(info);
+  });
+
+  it("should update price by owner", async function () {
+    const title = "Investment Tips";
+    const info = "Expert investment advice";
+    const initialPrice = 300000;
+    const newPrice = 400000;
+
+    const encryptedInput = await fhevm
+      .createEncryptedInput(infoTradeContractAddress, signers.alice.address)
+      .addAddress(signers.alice.address)
+      .add64(initialPrice)
+      .encrypt();
+
+    await infoTradeContract
+      .connect(signers.alice)
+      .createInfo(
+        title,
+        info,
+        encryptedInput.handles[0],
+        encryptedInput.handles[1],
+        encryptedInput.inputProof
+      );
+
+    const newPriceInput = await fhevm
+      .createEncryptedInput(infoTradeContractAddress, signers.alice.address)
+      .add64(newPrice)
+      .encrypt();
+
+    const tx = await infoTradeContract
+      .connect(signers.alice)
+      .updatePrice(1, newPriceInput.handles[0], newPriceInput.inputProof);
+
+    await tx.wait();
+
+    const encryptedPrice = await infoTradeContract.getEncryptedPrice(1);
+    const decryptedPrice = await fhevm.userDecryptEuint(
+      FhevmType.euint64,
+      encryptedPrice,
       infoTradeContractAddress,
-      infoEncoderContract,
-      infoEncoderContractAddress,
-    } = await deployFixture());
+      signers.alice,
+    );
+
+    expect(decryptedPrice).to.eq(newPrice);
   });
 
-  describe("Contract Deployment", function () {
-    it("should deploy with correct initial state", async function () {
-      const [nextInfoId, platformBalance] = await infoTradeContract.getPlatformStats();
-      expect(nextInfoId).to.eq(1n);
-      expect(platformBalance).to.eq(0n);
+  it("should deactivate info by owner", async function () {
+    const title = "Crypto Insights";
+    const info = "Cryptocurrency market analysis";
+    const price = 200000;
 
-      const owner = await infoTradeContract.owner();
-      expect(owner).to.eq(signers.deployer.address);
-    });
-  });
+    const encryptedInput = await fhevm
+      .createEncryptedInput(infoTradeContractAddress, signers.alice.address)
+      .addAddress(signers.alice.address)
+      .add64(price)
+      .encrypt();
 
-  describe("String to Address Conversion", function () {
-    it("should convert string to address consistently", async function () {
-      const address1 = await infoEncoderContract.encodeString(testMessage);
-      const address2 = await infoEncoderContract.encodeString(testMessage);
-      expect(address1).to.eq(address2);
-    });
-
-    it("should verify string encoding correctly", async function () {
-      const encodedAddress = await infoEncoderContract.encodeString(testMessage);
-      const isValid = await infoEncoderContract.verifyEncoding(testMessage, encodedAddress);
-      expect(isValid).to.be.true;
-
-      const isInvalid = await infoEncoderContract.verifyEncoding("different string", encodedAddress);
-      expect(isInvalid).to.be.false;
-    });
-
-    it("should handle batch encoding", async function () {
-      const strings = ["message1", "message2", "message3"];
-      const addresses = await infoEncoderContract.batchEncodeStrings(strings);
-      expect(addresses.length).to.eq(3);
-
-      // Verify each encoding
-      for (let i = 0; i < strings.length; i++) {
-        const singleAddress = await infoEncoderContract.encodeString(strings[i]);
-        expect(addresses[i]).to.eq(singleAddress);
-      }
-    });
-  });
-
-  describe("Information Upload", function () {
-    it("should upload encrypted information successfully", async function () {
-      // Convert string to address for encryption
-      const encodedAddress = await infoEncoderContract.encodeString(testMessage);
-
-      // Create encrypted input for the address
-      const encryptedInput = await fhevm
-        .createEncryptedInput(infoTradeContractAddress, signers.seller.address)
-        .addAddress(encodedAddress)
-        .encrypt();
-
-      // Upload the encrypted information
-      const tx = await infoTradeContract
-        .connect(signers.seller)
-        .uploadInfo(encryptedInput.handles[0], encryptedInput.inputProof, testPrice);
-
-      const receipt = await tx.wait();
-      expect(receipt?.status).to.eq(1);
-
-      // Check platform stats
-      const [nextInfoId] = await infoTradeContract.getPlatformStats();
-      expect(nextInfoId).to.eq(2n);
-
-      // Check info basics
-      const [seller, price, isActive, createdAt] = await infoTradeContract.getInfoBasics(1);
-      expect(seller).to.eq(signers.seller.address);
-      expect(price).to.eq(testPrice);
-      expect(isActive).to.be.true;
-      expect(createdAt).to.be.greaterThan(0);
-    });
-
-    it("should fail to upload with zero price", async function () {
-      const encodedAddress = await infoEncoderContract.encodeString(testMessage);
-      const encryptedInput = await fhevm
-        .createEncryptedInput(infoTradeContractAddress, signers.seller.address)
-        .addAddress(encodedAddress)
-        .encrypt();
-
-      await expect(
-        infoTradeContract
-          .connect(signers.seller)
-          .uploadInfo(encryptedInput.handles[0], encryptedInput.inputProof, 0)
-      ).to.be.revertedWith("Price must be greater than 0");
-    });
-
-    it("should track seller's information items", async function () {
-      const encodedAddress = await infoEncoderContract.encodeString(testMessage);
-      const encryptedInput = await fhevm
-        .createEncryptedInput(infoTradeContractAddress, signers.seller.address)
-        .addAddress(encodedAddress)
-        .encrypt();
-
-      await infoTradeContract
-        .connect(signers.seller)
-        .uploadInfo(encryptedInput.handles[0], encryptedInput.inputProof, testPrice);
-
-      const sellerInfos = await infoTradeContract.getSellerInfos(signers.seller.address);
-      expect(sellerInfos.length).to.eq(1);
-      expect(sellerInfos[0]).to.eq(1n);
-    });
-  });
-
-  describe("Purchase Request", function () {
-    let infoId: bigint;
-
-    beforeEach(async function () {
-      // Upload test information
-      const encodedAddress = await infoEncoderContract.encodeString(testMessage);
-      const encryptedInput = await fhevm
-        .createEncryptedInput(infoTradeContractAddress, signers.seller.address)
-        .addAddress(encodedAddress)
-        .encrypt();
-
-      await infoTradeContract
-        .connect(signers.seller)
-        .uploadInfo(encryptedInput.handles[0], encryptedInput.inputProof, testPrice);
-
-      infoId = 1n;
-    });
-
-    it("should create purchase request successfully", async function () {
-      const tx = await infoTradeContract
-        .connect(signers.buyer1)
-        .requestPurchase(infoId, { value: testPrice });
-
-      const receipt = await tx.wait();
-      expect(receipt?.status).to.eq(1);
-
-      // Check purchase request status
-      const [isPending, isApproved, timestamp] = await infoTradeContract.getPurchaseRequestStatus(
-        infoId,
-        signers.buyer1.address
+    await infoTradeContract
+      .connect(signers.alice)
+      .createInfo(
+        title,
+        info,
+        encryptedInput.handles[0],
+        encryptedInput.handles[1],
+        encryptedInput.inputProof
       );
-      expect(isPending).to.be.true;
-      expect(isApproved).to.be.false;
-      expect(timestamp).to.be.greaterThan(0);
-    });
 
-    it("should fail with insufficient payment", async function () {
-      const insufficientPayment = ethers.parseEther("0.5");
-      await expect(
-        infoTradeContract.connect(signers.buyer1).requestPurchase(infoId, { value: insufficientPayment })
-      ).to.be.revertedWith("Insufficient payment");
-    });
+    const tx = await infoTradeContract
+      .connect(signers.alice)
+      .deactivateInfo(1);
 
-    it("should fail if seller tries to buy own info", async function () {
-      await expect(
-        infoTradeContract.connect(signers.seller).requestPurchase(infoId, { value: testPrice })
-      ).to.be.revertedWith("Cannot purchase own info");
-    });
+    await tx.wait();
 
-    it("should fail if buyer already has pending request", async function () {
-      // First request
-      await infoTradeContract.connect(signers.buyer1).requestPurchase(infoId, { value: testPrice });
+    const basicDetails = await infoTradeContract
+      .connect(signers.alice)
+      .getInfoBasicDetails(1);
 
-      // Second request should fail
-      await expect(
-        infoTradeContract.connect(signers.buyer1).requestPurchase(infoId, { value: testPrice })
-      ).to.be.revertedWith("Purchase already pending");
-    });
-
-    it("should show pending requests to seller", async function () {
-      // Create multiple purchase requests
-      await infoTradeContract.connect(signers.buyer1).requestPurchase(infoId, { value: testPrice });
-      await infoTradeContract.connect(signers.buyer2).requestPurchase(infoId, { value: testPrice });
-
-      const pendingRequests = await infoTradeContract.connect(signers.seller).getPendingRequests(infoId);
-      expect(pendingRequests.length).to.eq(2);
-      expect(pendingRequests).to.include(signers.buyer1.address);
-      expect(pendingRequests).to.include(signers.buyer2.address);
-    });
+    expect(basicDetails.isActive).to.eq(false);
   });
 
-  describe("Access Management", function () {
-    let infoId: bigint;
+  it("should not allow purchasing own info", async function () {
+    const title = "My Secret";
+    const info = "Personal trading secret";
+    const price = 100000;
 
-    beforeEach(async function () {
-      // Upload test information and create purchase request
-      const encodedAddress = await infoEncoderContract.encodeString(testMessage);
-      const encryptedInput = await fhevm
-        .createEncryptedInput(infoTradeContractAddress, signers.seller.address)
-        .addAddress(encodedAddress)
-        .encrypt();
+    const encryptedInput = await fhevm
+      .createEncryptedInput(infoTradeContractAddress, signers.alice.address)
+      .addAddress(signers.alice.address)
+      .add64(price)
+      .encrypt();
 
-      await infoTradeContract
-        .connect(signers.seller)
-        .uploadInfo(encryptedInput.handles[0], encryptedInput.inputProof, testPrice);
-
-      infoId = 1n;
-
-      await infoTradeContract.connect(signers.buyer1).requestPurchase(infoId, { value: testPrice });
-    });
-
-    it("should grant access and transfer payment", async function () {
-      const sellerBalanceBefore = await ethers.provider.getBalance(signers.seller.address);
-      const contractBalanceBefore = await ethers.provider.getBalance(infoTradeContractAddress);
-
-      const tx = await infoTradeContract
-        .connect(signers.seller)
-        .grantAccess(infoId, signers.buyer1.address);
-
-      const receipt = await tx.wait();
-      expect(receipt?.status).to.eq(1);
-
-      // Check request status
-      const [isPending, isApproved] = await infoTradeContract.getPurchaseRequestStatus(
-        infoId,
-        signers.buyer1.address
+    await infoTradeContract
+      .connect(signers.alice)
+      .createInfo(
+        title,
+        info,
+        encryptedInput.handles[0],
+        encryptedInput.handles[1],
+        encryptedInput.inputProof
       );
-      expect(isPending).to.be.false;
-      expect(isApproved).to.be.true;
 
-      // Check payment transfer
-      const sellerBalanceAfter = await ethers.provider.getBalance(signers.seller.address);
-      const [, platformBalance] = await infoTradeContract.getPlatformStats();
-
-      const expectedFee = (testPrice * 2n) / 100n; // 2% platform fee
-      const expectedSellerAmount = testPrice - expectedFee;
-
-      expect(platformBalance).to.eq(expectedFee);
-      // Note: We don't check exact balance due to gas costs, but ensure it increased
-      expect(sellerBalanceAfter).to.be.greaterThan(sellerBalanceBefore);
-    });
-
-    it("should deny access and refund payment", async function () {
-      const buyer1BalanceBefore = await ethers.provider.getBalance(signers.buyer1.address);
-
-      const tx = await infoTradeContract
-        .connect(signers.seller)
-        .denyAccess(infoId, signers.buyer1.address);
-
-      const receipt = await tx.wait();
-      expect(receipt?.status).to.eq(1);
-
-      // Check request status
-      const [isPending, isApproved] = await infoTradeContract.getPurchaseRequestStatus(
-        infoId,
-        signers.buyer1.address
-      );
-      expect(isPending).to.be.false;
-      expect(isApproved).to.be.false;
-
-      // Check refund (buyer balance should increase by testPrice)
-      const buyer1BalanceAfter = await ethers.provider.getBalance(signers.buyer1.address);
-      expect(buyer1BalanceAfter).to.be.greaterThan(buyer1BalanceBefore);
-    });
-
-    it("should fail if non-seller tries to grant access", async function () {
-      await expect(
-        infoTradeContract.connect(signers.buyer2).grantAccess(infoId, signers.buyer1.address)
-      ).to.be.revertedWith("Only info seller can call this function");
-    });
-
-    it("should fail if no pending request exists", async function () {
-      await expect(
-        infoTradeContract.connect(signers.seller).grantAccess(infoId, signers.buyer2.address)
-      ).to.be.revertedWith("No pending request from this buyer");
-    });
+    await expect(
+      infoTradeContract.connect(signers.alice).purchaseInfo(1)
+    ).to.be.revertedWith("Cannot purchase your own info");
   });
 
-  describe("Information Access", function () {
-    let infoId: bigint;
+  it("should not allow purchasing inactive info", async function () {
+    const title = "Disabled Secret";
+    const info = "This will be disabled";
+    const price = 150000;
 
-    beforeEach(async function () {
-      // Upload and grant access to information
-      const encodedAddress = await infoEncoderContract.encodeString(testMessage);
-      const encryptedInput = await fhevm
-        .createEncryptedInput(infoTradeContractAddress, signers.seller.address)
-        .addAddress(encodedAddress)
-        .encrypt();
+    const encryptedInput = await fhevm
+      .createEncryptedInput(infoTradeContractAddress, signers.alice.address)
+      .addAddress(signers.alice.address)
+      .add64(price)
+      .encrypt();
 
-      await infoTradeContract
-        .connect(signers.seller)
-        .uploadInfo(encryptedInput.handles[0], encryptedInput.inputProof, testPrice);
+    await infoTradeContract
+      .connect(signers.alice)
+      .createInfo(
+        title,
+        info,
+        encryptedInput.handles[0],
+        encryptedInput.handles[1],
+        encryptedInput.inputProof
+      );
 
-      infoId = 1n;
+    await infoTradeContract
+      .connect(signers.alice)
+      .deactivateInfo(1);
 
-      await infoTradeContract.connect(signers.buyer1).requestPurchase(infoId, { value: testPrice });
-      await infoTradeContract.connect(signers.seller).grantAccess(infoId, signers.buyer1.address);
-    });
-
-    it("should allow authorized user to access encrypted information", async function () {
-      const encryptedInfo = await infoTradeContract.connect(signers.buyer1).getEncryptedInfo(infoId);
-      expect(encryptedInfo).to.not.eq(ethers.ZeroHash);
-
-      // Note: In actual implementation, decryption would be handled client-side
-      // For test purposes, we verify the encrypted info handle is accessible
-      console.log(`Encrypted info accessible to buyer: ${encryptedInfo}`);
-    });
-
-    it("should allow seller to access their own information", async function () {
-      const encryptedInfo = await infoTradeContract.connect(signers.seller).getEncryptedInfo(infoId);
-      expect(encryptedInfo).to.not.eq(ethers.ZeroHash);
-
-      // Note: In actual implementation, decryption would be handled client-side
-      // For test purposes, we verify the seller can access their encrypted info
-      console.log(`Encrypted info accessible to seller: ${encryptedInfo}`);
-    });
+    await expect(
+      infoTradeContract.connect(signers.bob).purchaseInfo(1)
+    ).to.be.revertedWith("Info is not active");
   });
 
-  describe("Information Management", function () {
-    let infoId: bigint;
+  it("should not allow duplicate purchases", async function () {
+    const title = "Unique Secret";
+    const info = "Can only be purchased once";
+    const price = 250000;
 
-    beforeEach(async function () {
-      const encodedAddress = await infoEncoderContract.encodeString(testMessage);
-      const encryptedInput = await fhevm
-        .createEncryptedInput(infoTradeContractAddress, signers.seller.address)
-        .addAddress(encodedAddress)
-        .encrypt();
+    const encryptedInput = await fhevm
+      .createEncryptedInput(infoTradeContractAddress, signers.alice.address)
+      .addAddress(signers.alice.address)
+      .add64(price)
+      .encrypt();
 
-      await infoTradeContract
-        .connect(signers.seller)
-        .uploadInfo(encryptedInput.handles[0], encryptedInput.inputProof, testPrice);
-
-      infoId = 1n;
-    });
-
-    it("should deactivate information", async function () {
-      const tx = await infoTradeContract.connect(signers.seller).deactivateInfo(infoId);
-      const receipt = await tx.wait();
-      expect(receipt?.status).to.eq(1);
-
-      const [, , isActive] = await infoTradeContract.getInfoBasics(infoId);
-      expect(isActive).to.be.false;
-    });
-
-    it("should prevent purchase of deactivated information", async function () {
-      await infoTradeContract.connect(signers.seller).deactivateInfo(infoId);
-
-      await expect(
-        infoTradeContract.connect(signers.buyer1).requestPurchase(infoId, { value: testPrice })
-      ).to.be.revertedWith("Info is not active");
-    });
-
-    it("should fail if non-seller tries to deactivate", async function () {
-      await expect(infoTradeContract.connect(signers.buyer1).deactivateInfo(infoId)).to.be.revertedWith(
-        "Only info seller can call this function"
+    await infoTradeContract
+      .connect(signers.alice)
+      .createInfo(
+        title,
+        info,
+        encryptedInput.handles[0],
+        encryptedInput.handles[1],
+        encryptedInput.inputProof
       );
-    });
+
+    await infoTradeContract
+      .connect(signers.bob)
+      .purchaseInfo(1);
+
+    await expect(
+      infoTradeContract.connect(signers.bob).purchaseInfo(1)
+    ).to.be.revertedWith("Already purchased");
   });
 
-  describe("Platform Management", function () {
-    it("should allow owner to withdraw platform fees", async function () {
-      // Create a transaction that generates platform fees
-      const encodedAddress = await infoEncoderContract.encodeString(testMessage);
-      const encryptedInput = await fhevm
-        .createEncryptedInput(infoTradeContractAddress, signers.seller.address)
-        .addAddress(encodedAddress)
-        .encrypt();
+  it("should track user info items and purchases", async function () {
+    const price = 100000;
 
-      await infoTradeContract
-        .connect(signers.seller)
-        .uploadInfo(encryptedInput.handles[0], encryptedInput.inputProof, testPrice);
+    const encryptedInput1 = await fhevm
+      .createEncryptedInput(infoTradeContractAddress, signers.alice.address)
+      .addAddress(signers.alice.address)
+      .add64(price)
+      .encrypt();
 
-      const infoId = 1n;
-      await infoTradeContract.connect(signers.buyer1).requestPurchase(infoId, { value: testPrice });
-      await infoTradeContract.connect(signers.seller).grantAccess(infoId, signers.buyer1.address);
-
-      const ownerBalanceBefore = await ethers.provider.getBalance(signers.deployer.address);
-
-      const tx = await infoTradeContract.connect(signers.deployer).withdrawPlatformFees();
-      const receipt = await tx.wait();
-      expect(receipt?.status).to.eq(1);
-
-      const [, platformBalance] = await infoTradeContract.getPlatformStats();
-      expect(platformBalance).to.eq(0n);
-
-      const ownerBalanceAfter = await ethers.provider.getBalance(signers.deployer.address);
-      expect(ownerBalanceAfter).to.be.greaterThan(ownerBalanceBefore);
-    });
-
-    it("should fail if non-owner tries to withdraw fees", async function () {
-      await expect(infoTradeContract.connect(signers.seller).withdrawPlatformFees()).to.be.revertedWith(
-        "Only owner can call this function"
+    await infoTradeContract
+      .connect(signers.alice)
+      .createInfo(
+        "Alice Info 1",
+        "Alice's first info",
+        encryptedInput1.handles[0],
+        encryptedInput1.handles[1],
+        encryptedInput1.inputProof
       );
-    });
 
-    it("should fail to withdraw when no fees available", async function () {
-      await expect(infoTradeContract.connect(signers.deployer).withdrawPlatformFees()).to.be.revertedWith(
-        "No fees to withdraw"
+    const encryptedInput2 = await fhevm
+      .createEncryptedInput(infoTradeContractAddress, signers.alice.address)
+      .addAddress(signers.alice.address)
+      .add64(price)
+      .encrypt();
+
+    await infoTradeContract
+      .connect(signers.alice)
+      .createInfo(
+        "Alice Info 2",
+        "Alice's second info",
+        encryptedInput2.handles[0],
+        encryptedInput2.handles[1],
+        encryptedInput2.inputProof
       );
-    });
-  });
 
-  describe("Edge Cases", function () {
-    it("should handle non-existent info ID", async function () {
-      await expect(infoTradeContract.getInfoBasics(999)).to.be.revertedWith("Info does not exist");
-    });
+    await infoTradeContract
+      .connect(signers.bob)
+      .purchaseInfo(1);
 
-    it("should handle multiple info items from same seller", async function () {
-      const messages = ["Message 1", "Message 2", "Message 3"];
-      
-      for (const message of messages) {
-        const encodedAddress = await infoEncoderContract.encodeString(message);
-        const encryptedInput = await fhevm
-          .createEncryptedInput(infoTradeContractAddress, signers.seller.address)
-          .addAddress(encodedAddress)
-          .encrypt();
+    await infoTradeContract
+      .connect(signers.bob)
+      .purchaseInfo(2);
 
-        await infoTradeContract
-          .connect(signers.seller)
-          .uploadInfo(encryptedInput.handles[0], encryptedInput.inputProof, testPrice);
-      }
+    const aliceInfoItems = await infoTradeContract.getUserInfoItems(signers.alice.address);
+    expect(aliceInfoItems.length).to.eq(2);
+    expect(aliceInfoItems[0]).to.eq(1);
+    expect(aliceInfoItems[1]).to.eq(2);
 
-      const sellerInfos = await infoTradeContract.getSellerInfos(signers.seller.address);
-      expect(sellerInfos.length).to.eq(3);
-      expect(sellerInfos[0]).to.eq(1n);
-      expect(sellerInfos[1]).to.eq(2n);
-      expect(sellerInfos[2]).to.eq(3n);
-    });
-
-    it("should handle overpayment correctly", async function () {
-      const encodedAddress = await infoEncoderContract.encodeString(testMessage);
-      const encryptedInput = await fhevm
-        .createEncryptedInput(infoTradeContractAddress, signers.seller.address)
-        .addAddress(encodedAddress)
-        .encrypt();
-
-      await infoTradeContract
-        .connect(signers.seller)
-        .uploadInfo(encryptedInput.handles[0], encryptedInput.inputProof, testPrice);
-
-      const overpayment = ethers.parseEther("2.0");
-      const tx = await infoTradeContract
-        .connect(signers.buyer1)
-        .requestPurchase(1n, { value: overpayment });
-
-      const receipt = await tx.wait();
-      expect(receipt?.status).to.eq(1);
-
-      // Check that request was created successfully
-      const [isPending] = await infoTradeContract.getPurchaseRequestStatus(1n, signers.buyer1.address);
-      expect(isPending).to.be.true;
-    });
+    const bobPurchases = await infoTradeContract.getUserPurchases(signers.bob.address);
+    expect(bobPurchases.length).to.eq(2);
+    expect(bobPurchases[0]).to.eq(1);
+    expect(bobPurchases[1]).to.eq(2);
   });
 });
