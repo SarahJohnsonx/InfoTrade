@@ -27,6 +27,26 @@ function encryptByKey(data: string, keyAddress: string): string {
   return btoa(encrypted); // Base64 encode the result
 }
 
+// Decrypt function using the same key address
+function decryptByKey(encryptedData: string, keyAddress: string): string {
+  try {
+    const encrypted = atob(encryptedData); // Base64 decode
+    const keyBytes = keyAddress.slice(2); // Remove 0x prefix
+    let decrypted = '';
+
+    for (let i = 0; i < encrypted.length; i++) {
+      const encryptedChar = encrypted.charCodeAt(i);
+      const keyChar = parseInt(keyBytes[(i * 2) % keyBytes.length] + keyBytes[(i * 2 + 1) % keyBytes.length], 16);
+      decrypted += String.fromCharCode(encryptedChar ^ keyChar);
+    }
+
+    return decrypted;
+  } catch (error) {
+    console.error('Decryption failed:', error);
+    return '';
+  }
+}
+
 export function InfoSubmission() {
   const { address } = useAccount();
   const { instance, isLoading: zamaLoading, error: zamaError } = useZamaInstance();
@@ -203,24 +223,6 @@ export function InfoSubmission() {
               maxLength={1000}
               disabled={isSubmitting}
             />
-          </div>
-
-          <div className="form-group">
-            <label htmlFor="targetAddress" className="form-label">
-              Target Address (Encrypted)
-            </label>
-            <input
-              type="text"
-              id="targetAddress"
-              value={formData.targetAddress}
-              onChange={(e) => handleInputChange('targetAddress', e.target.value)}
-              placeholder="0x... (This address will be encrypted)"
-              className="form-input"
-              disabled={isSubmitting}
-            />
-            <p className="field-description">
-              This address will be encrypted and only accessible to those who purchase access.
-            </p>
           </div>
 
           {submitStatus.type && (

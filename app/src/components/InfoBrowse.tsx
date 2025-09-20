@@ -7,6 +7,26 @@ import { useZamaInstance } from '../hooks/useZamaInstance';
 import { CONTRACT_ADDRESS, CONTRACT_ABI } from '../config/contracts';
 import '../styles/InfoBrowse.css';
 
+// Decrypt function using the same key address
+function decryptByKey(encryptedData: string, keyAddress: string): string {
+  try {
+    const encrypted = atob(encryptedData); // Base64 decode
+    const keyBytes = keyAddress.slice(2); // Remove 0x prefix
+    let decrypted = '';
+
+    for (let i = 0; i < encrypted.length; i++) {
+      const encryptedChar = encrypted.charCodeAt(i);
+      const keyChar = parseInt(keyBytes[(i * 2) % keyBytes.length] + keyBytes[(i * 2 + 1) % keyBytes.length], 16);
+      decrypted += String.fromCharCode(encryptedChar ^ keyChar);
+    }
+
+    return decrypted;
+  } catch (error) {
+    console.error('Decryption failed:', error);
+    return '';
+  }
+}
+
 interface InfoItem {
   id: string;
   name: string;
@@ -16,6 +36,8 @@ interface InfoItem {
   createdAt: string;
   hasAccess: boolean;
   decryptedAddress?: string;
+  decryptedInfo?: string;
+  isInfoDecrypted?: boolean;
 }
 
 export function InfoBrowse() {
@@ -62,7 +84,7 @@ export function InfoBrowse() {
           items.push({
             id: id.toString(),
             name: info.name,
-            info: info.info,
+            info: '***', // Always show *** for security
             owner: info.owner,
             price: formatEther(info.price),
             createdAt: new Date(Number(info.createdAt) * 1000).toLocaleDateString(),
@@ -202,6 +224,104 @@ export function InfoBrowse() {
     }
   };
 
+  const decryptInfo = async (infoId: string) => {
+    if (!signerPromise || !address || !zamaInstance) return;
+
+    const item = infoItems.find(item => item.id === infoId);
+    if (!item || !item.hasAccess) return;
+
+    setDecryptingItems(prev => new Set(prev).add(infoId));
+
+    try {
+      const signer = await signerPromise;
+      if (!signer) return;
+
+      const contract = new Contract(CONTRACT_ADDRESS, CONTRACT_ABI, signer);
+      const infoData = await contract.getInfo(infoId);
+
+      // First decrypt the address if not already done
+      let decryptedAddress = item.decryptedAddress;
+      if (!decryptedAddress) {
+        const encryptedAddressHandle = infoData.encryptedAddress;
+
+        const keypair = zamaInstance.generateKeypair();
+        const handleContractPairs = [{
+          handle: encryptedAddressHandle,
+          contractAddress: CONTRACT_ADDRESS
+        }];
+
+        const startTimeStamp = Math.floor(Date.now() / 1000).toString();
+        const durationDays = "10";
+        const contractAddresses = [CONTRACT_ADDRESS];
+
+        const eip712 = zamaInstance.createEIP712(
+          keypair.publicKey,
+          contractAddresses,
+          startTimeStamp,
+          durationDays
+        );
+
+        const signature = await signer.signTypedData(
+          eip712.domain,
+          { UserDecryptRequestVerification: eip712.types.UserDecryptRequestVerification },
+          eip712.message
+        );
+
+        const result = await zamaInstance.userDecrypt(
+          handleContractPairs,
+          keypair.privateKey,
+          keypair.publicKey,
+          signature.replace("0x", ""),
+          contractAddresses,
+          address,
+          startTimeStamp,
+          durationDays
+        );
+
+        decryptedAddress = result[encryptedAddressHandle];
+      }
+
+      // Now decrypt the info using the decrypted address
+      if (!decryptedAddress) {
+        throw new Error('Failed to decrypt address');
+      }
+      const decryptedInfo = decryptByKey(infoData.info, decryptedAddress);
+
+      // Update the item with both decrypted address and info
+      setInfoItems(prevItems =>
+        prevItems.map(item =>
+          item.id === infoId
+            ? {
+                ...item,
+                decryptedAddress,
+                decryptedInfo,
+                isInfoDecrypted: true
+                // Keep original info as ***
+              }
+            : item
+        )
+      );
+
+      setStatusMessage({
+        type: 'success',
+        message: 'Information decrypted successfully!'
+      });
+
+    } catch (error: any) {
+      console.error('Error decrypting info:', error);
+      setStatusMessage({
+        type: 'error',
+        message: 'Failed to decrypt information. Please try again.'
+      });
+    } finally {
+      setDecryptingItems(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(infoId);
+        return newSet;
+      });
+    }
+  };
+
   useEffect(() => {
     if (address && signerPromise && zamaInstance) {
       loadInfoItems();
@@ -267,7 +387,16 @@ export function InfoBrowse() {
                   <span className="info-value">{item.createdAt}</span>
                 </div>
 
-                {item.hasAccess && item.decryptedAddress && (
+                {item.hasAccess && item.isInfoDecrypted && item.decryptedInfo && (
+                  <div className="info-field encrypted-address">
+                    <span className="info-label">Info:</span>
+                    <span className="info-value decrypted">
+                      {item.decryptedInfo}
+                    </span>
+                  </div>
+                )}
+
+                {item.hasAccess && item.decryptedAddress && !item.isInfoDecrypted && (
                   <div className="info-field encrypted-address">
                     <span className="info-label">Target Address:</span>
                     <span className="info-value address decrypted">
@@ -283,18 +412,23 @@ export function InfoBrowse() {
                 ) : item.hasAccess ? (
                   <div className="access-granted">
                     <span className="access-badge">Access Granted</span>
-                    {!item.decryptedAddress ? (
-                      <button
-                        onClick={() => decryptAddress(item.id)}
-                        disabled={decryptingItems.has(item.id)}
-                        className="decrypt-button"
-                      >
-                        {decryptingItems.has(item.id)
-                          ? 'Decrypting...'
-                          : 'Decrypt Address'
-                        }
-                      </button>
-                    ) : null}
+                    <div className="decrypt-actions">
+                      
+                      {!item.isInfoDecrypted ? (
+                        <button
+                          onClick={() => decryptInfo(item.id)}
+                          disabled={decryptingItems.has(item.id)}
+                          className="decrypt-button"
+                        >
+                          {decryptingItems.has(item.id)
+                            ? 'Decrypting...'
+                            : 'Decrypt Info'
+                          }
+                        </button>
+                      ) : (
+                        <span className="decrypted-status">✓ Info Decrypted</span>
+                      )}
+                    </div>
                   </div>
                 ) : (
                   <button

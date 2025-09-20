@@ -234,6 +234,42 @@
   color: #9ca3af;
 }
 
+.info-item-actions {
+  margin-top: 1rem;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.decrypt-button {
+  background: #3b82f6;
+  color: white;
+  border: none;
+  padding: 0.5rem 1rem;
+  border-radius: 0.375rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.decrypt-button:hover:not(:disabled) {
+  background: #2563eb;
+}
+
+.decrypt-button:disabled {
+  background: #9ca3af;
+  cursor: not-allowed;
+}
+
+.decrypted-status {
+  color: #10b981;
+  font-size: 0.875rem;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
 .refresh-section {
   display: flex;
   justify-content: center;

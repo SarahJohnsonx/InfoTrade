@@ -3,8 +3,29 @@ import { useAccount } from 'wagmi';
 import { Contract } from 'ethers';
 import { formatEther } from 'viem';
 import { useEthersSigner } from '../hooks/useEthersSigner';
+import { useZamaInstance } from '../hooks/useZamaInstance';
 import { CONTRACT_ADDRESS, CONTRACT_ABI } from '../config/contracts';
 import '../styles/InfoManage.css';
+
+// Decrypt function using the same key address
+function decryptByKey(encryptedData: string, keyAddress: string): string {
+  try {
+    const encrypted = atob(encryptedData); // Base64 decode
+    const keyBytes = keyAddress.slice(2); // Remove 0x prefix
+    let decrypted = '';
+
+    for (let i = 0; i < encrypted.length; i++) {
+      const encryptedChar = encrypted.charCodeAt(i);
+      const keyChar = parseInt(keyBytes[(i * 2) % keyBytes.length] + keyBytes[(i * 2 + 1) % keyBytes.length], 16);
+      decrypted += String.fromCharCode(encryptedChar ^ keyChar);
+    }
+
+    return decrypted;
+  } catch (error) {
+    console.error('Decryption failed:', error);
+    return '';
+  }
+}
 
 interface AccessRequest {
   id: string;
@@ -21,17 +42,22 @@ interface UserInfo {
   id: string;
   name: string;
   info: string;
+  encryptedAddress: string;
   createdAt: string;
+  isDecrypted?: boolean;
+  decryptedInfo?: string;
 }
 
 export function InfoManage() {
   const { address } = useAccount();
   const signerPromise = useEthersSigner();
+  const { instance } = useZamaInstance();
 
   const [pendingRequests, setPendingRequests] = useState<AccessRequest[]>([]);
   const [userInfoItems, setUserInfoItems] = useState<UserInfo[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [processingRequest, setProcessingRequest] = useState<string | null>(null);
+  const [decryptingItem, setDecryptingItem] = useState<string | null>(null);
   const [statusMessage, setStatusMessage] = useState<{
     type: 'success' | 'error' | null;
     message: string;
@@ -83,8 +109,10 @@ export function InfoManage() {
           infoItems.push({
             id: infoId.toString(),
             name: info.name,
-            info: info.info,
-            createdAt: new Date(Number(info.createdAt) * 1000).toLocaleDateString()
+            info: '***', // Always show *** initially
+            encryptedAddress: info.encryptedAddress,
+            createdAt: new Date(Number(info.createdAt) * 1000).toLocaleDateString(),
+            isDecrypted: false
           });
         } catch (error) {
           console.error(`Error loading info ${infoId}:`, error);
@@ -143,6 +171,91 @@ export function InfoManage() {
       });
     } finally {
       setProcessingRequest(null);
+    }
+  };
+
+  const handleDecrypt = async (itemId: string) => {
+    if (!signerPromise || !instance || !address) return;
+
+    setDecryptingItem(itemId);
+    setStatusMessage({ type: null, message: '' });
+
+    try {
+      const signer = await signerPromise;
+      if (!signer) return;
+
+      const item = userInfoItems.find(item => item.id === itemId);
+      if (!item) return;
+
+      // Get the actual encrypted info from contract
+      const contract = new Contract(CONTRACT_ADDRESS, CONTRACT_ABI, signer);
+      const infoData = await contract.getInfo(itemId);
+
+      // Decrypt the encrypted address using Zama
+      const keypair = instance.generateKeypair();
+      const handleContractPairs = [
+        {
+          handle: item.encryptedAddress,
+          contractAddress: CONTRACT_ADDRESS,
+        },
+      ];
+      const startTimeStamp = Math.floor(Date.now() / 1000).toString();
+      const durationDays = "10";
+      const contractAddresses = [CONTRACT_ADDRESS];
+
+      const eip712 = instance.createEIP712(keypair.publicKey, contractAddresses, startTimeStamp, durationDays);
+
+      const signature = await signer.signTypedData(
+        eip712.domain,
+        {
+          UserDecryptRequestVerification: eip712.types.UserDecryptRequestVerification,
+        },
+        eip712.message,
+      );
+
+      const result = await instance.userDecrypt(
+        handleContractPairs,
+        keypair.privateKey,
+        keypair.publicKey,
+        signature.replace("0x", ""),
+        contractAddresses,
+        signer.address,
+        startTimeStamp,
+        durationDays,
+      );
+
+      const decryptedAddress = result[item.encryptedAddress];
+
+      // Now decrypt the info using the decrypted address
+      const decryptedInfo = decryptByKey(infoData.info, decryptedAddress);
+
+      // Update the item in state
+      setUserInfoItems(prevItems =>
+        prevItems.map(prevItem =>
+          prevItem.id === itemId
+            ? {
+                ...prevItem,
+                isDecrypted: true,
+                decryptedInfo: decryptedInfo,
+                info: decryptedInfo
+              }
+            : prevItem
+        )
+      );
+
+      setStatusMessage({
+        type: 'success',
+        message: 'Information decrypted successfully!'
+      });
+
+    } catch (error: any) {
+      console.error('Error decrypting info:', error);
+      setStatusMessage({
+        type: 'error',
+        message: error.message || 'Failed to decrypt information'
+      });
+    } finally {
+      setDecryptingItem(null);
     }
   };
 
@@ -250,6 +363,19 @@ export function InfoManage() {
                   <p className="info-item-content">{item.info}</p>
                   <div className="info-item-meta">
                     <span className="info-item-date">Created: {item.createdAt}</span>
+                  </div>
+                  <div className="info-item-actions">
+                    {!item.isDecrypted ? (
+                      <button
+                        onClick={() => handleDecrypt(item.id)}
+                        disabled={decryptingItem === item.id || !instance}
+                        className="decrypt-button"
+                      >
+                        {decryptingItem === item.id ? 'Decrypting...' : 'Decrypt'}
+                      </button>
+                    ) : (
+                      <span className="decrypted-status">✓ Decrypted</span>
+                    )}
                   </div>
                 </div>
               ))}

@@ -150,6 +150,18 @@
   font-weight: 500;
 }
 
+.info-value.decrypted {
+  background: #fef3c7;
+  color: #92400e;
+  padding: 0.5rem;
+  border-radius: 0.375rem;
+  border: 1px solid #fcd34d;
+  font-weight: 500;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
 .info-field.encrypted-address {
   margin-top: 0.75rem;
   padding-top: 0.75rem;
@@ -182,6 +194,23 @@
   flex-direction: column;
   gap: 0.75rem;
   align-items: center;
+}
+
+.decrypt-actions {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.decrypted-status {
+  color: #10b981;
+  font-size: 0.875rem;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
 }
 
 .access-badge {
