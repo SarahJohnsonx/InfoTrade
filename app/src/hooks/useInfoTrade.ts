@@ -22,6 +22,10 @@ export interface InfoItem extends InfoBasicDetails {
 export function useInfoTradeRead() {
   const { address } = useAccount();
 
+  console.log('=== useInfoTradeRead ===');
+  console.log('Contract address:', INFO_TRADE_ADDRESS);
+  console.log('User address:', address);
+
   // Read total info count
   const { data: totalCount, refetch: refetchTotalCount } = useReadContracts({
     contracts: [
@@ -32,6 +36,8 @@ export function useInfoTradeRead() {
       }
     ],
   });
+
+  console.log('Total count data:', totalCount);
 
   // Read user info items
   const { data: userInfoItems, refetch: refetchUserInfoItems } = useReadContracts({
@@ -58,15 +64,26 @@ export function useInfoTradeRead() {
   });
 
   const refetchAll = useCallback(() => {
+    console.log('Refetching all data...');
     refetchTotalCount();
     refetchUserInfoItems();
     refetchUserPurchases();
   }, [refetchTotalCount, refetchUserInfoItems, refetchUserPurchases]);
 
+  const finalTotalCount = totalCount?.[0]?.result as bigint | undefined;
+  const finalUserInfoItems = userInfoItems?.[0]?.result as bigint[] | undefined;
+  const finalUserPurchases = userPurchases?.[0]?.result as bigint[] | undefined;
+
+  console.log('Final return values:', {
+    totalCount: finalTotalCount,
+    userInfoItems: finalUserInfoItems,
+    userPurchases: finalUserPurchases
+  });
+
   return {
-    totalCount: totalCount?.[0]?.result as bigint | undefined,
-    userInfoItems: userInfoItems?.[0]?.result as bigint[] | undefined,
-    userPurchases: userPurchases?.[0]?.result as bigint[] | undefined,
+    totalCount: finalTotalCount,
+    userInfoItems: finalUserInfoItems,
+    userPurchases: finalUserPurchases,
     refetch: refetchAll,
   };
 }

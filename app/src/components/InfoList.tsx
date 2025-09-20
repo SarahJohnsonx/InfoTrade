@@ -10,6 +10,12 @@ export function InfoList() {
   const { purchaseInfo, grantAccess, loading, error } = useInfoTradeWrite();
   const [refreshKey, setRefreshKey] = useState(0);
 
+  console.log('=== InfoList render ===');
+  console.log('User address:', address);
+  console.log('Total count:', totalCount);
+  console.log('Loading:', loading);
+  console.log('Error:', error);
+
   const forceRefresh = () => {
     setRefreshKey(prev => prev + 1);
     refetch();

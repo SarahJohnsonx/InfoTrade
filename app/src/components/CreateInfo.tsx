@@ -2,10 +2,13 @@ import { useState } from 'react';
 import { useAccount } from 'wagmi';
 import { ethers } from 'ethers';
 import { useInfoTradeWrite } from '../hooks/useInfoTrade';
+import { useZamaInstance } from '../hooks/useZamaInstance';
+import { INFO_TRADE_ADDRESS } from '../contracts/InfoTrade';
 
 export function CreateInfo() {
   const { address } = useAccount();
   const { createInfo, loading, error } = useInfoTradeWrite();
+  const { instance, isLoading: zamaLoading, error: zamaError } = useZamaInstance();
 
   const [formData, setFormData] = useState({
     title: '',
@@ -37,16 +40,36 @@ export function CreateInfo() {
       setSuccess(false);
       console.log('Starting info creation...');
 
-      // Note: For demo purposes, we're using placeholder values for encrypted data
-      // In a real implementation, you would use Zama's encryption SDK here
-      const encryptedOwnerAddress = "0x" + "0".repeat(64); // Placeholder
-      const inputProof = "0x"; // Placeholder
+      if (!address) {
+        throw new Error('Please connect your wallet');
+      }
+
+      if (zamaLoading) {
+        throw new Error('Zama is still loading, please wait...');
+      }
+
+      if (zamaError) {
+        throw new Error(`Zama error: ${zamaError}`);
+      }
+
+      if (!instance) {
+        throw new Error('Zama instance not initialized');
+      }
+
+      console.log('Encrypting owner address with Zama...');
+      const input = instance.createEncryptedInput(INFO_TRADE_ADDRESS, address);
+      input.addAddress(address);
+      const encryptedInput = await input.encrypt();
+
+      const encryptedAddress = encryptedInput.handles[0];
+      const inputProof = encryptedInput.inputProof;
+
       const priceInWei = ethers.parseEther(formData.price);
 
       console.log('Calling createInfo with params:', {
         title: formData.title,
         info: formData.info,
-        encryptedOwnerAddress,
+        encryptedAddress,
         priceInWei: priceInWei.toString(),
         inputProof
       });
@@ -54,7 +77,7 @@ export function CreateInfo() {
       await createInfo(
         formData.title,
         formData.info,
-        encryptedOwnerAddress,
+        encryptedAddress,
         priceInWei.toString(),
         inputProof
       );
@@ -107,6 +130,32 @@ export function CreateInfo() {
             color: '#166534'
           }}>
             信息创建成功！您可以在"我的信息"中查看和管理。
+          </div>
+        )}
+
+        {zamaLoading && (
+          <div style={{
+            backgroundColor: '#fef3c7',
+            border: '1px solid #fde68a',
+            borderRadius: '0.375rem',
+            padding: '1rem',
+            marginBottom: '2rem',
+            color: '#d97706'
+          }}>
+            正在初始化Zama加密模块...
+          </div>
+        )}
+
+        {zamaError && (
+          <div style={{
+            backgroundColor: '#fee2e2',
+            border: '1px solid #fecaca',
+            borderRadius: '0.375rem',
+            padding: '1rem',
+            marginBottom: '2rem',
+            color: '#dc2626'
+          }}>
+            Zama错误：{zamaError}
           </div>
         )}
 
@@ -258,21 +307,21 @@ export function CreateInfo() {
 
           <button
             type="submit"
-            disabled={loading || !formData.title.trim() || !formData.info.trim() || !formData.price.trim()}
+            disabled={loading || zamaLoading || !formData.title.trim() || !formData.info.trim() || !formData.price.trim()}
             style={{
               width: '100%',
-              backgroundColor: loading ? '#9ca3af' : '#3b82f6',
+              backgroundColor: (loading || zamaLoading) ? '#9ca3af' : '#3b82f6',
               color: 'white',
               padding: '0.75rem',
               borderRadius: '0.375rem',
               border: 'none',
               fontSize: '1rem',
               fontWeight: '500',
-              cursor: loading ? 'not-allowed' : 'pointer',
+              cursor: (loading || zamaLoading) ? 'not-allowed' : 'pointer',
               transition: 'background-color 0.2s'
             }}
           >
-            {loading ? '创建中...' : '创建信息'}
+            {zamaLoading ? '初始化加密模块...' : loading ? '创建中...' : '创建信息'}
           </button>
         </form>
 
