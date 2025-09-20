@@ -1,260 +1,86 @@
-// import { FhevmType } from "@fhevm/hardhat-plugin";
+import { FhevmType } from "@fhevm/hardhat-plugin";
 import { task } from "hardhat/config";
 import type { TaskArguments } from "hardhat/types";
 
-/**
- * Tutorial: Deploy and Interact Locally (--network localhost)
- * ===========================================================
- *
- * 1. From a separate terminal window:
- *
- *   npx hardhat node
- *
- * 2. Deploy the InfoTrade contract
- *
- *   npx hardhat --network localhost deploy
- *
- * 3. Interact with the InfoTrade contract
- *
- *   npx hardhat --network localhost infotrade:address
- *   npx hardhat --network localhost infotrade:create --title "My Secret" --info "Secret trading algorithm" --price 1000000
- *   npx hardhat --network localhost infotrade:list
- *
- *
- * Tutorial: Deploy and Interact on Sepolia (--network sepolia)
- * ===========================================================
- *
- * 1. Deploy the InfoTrade contract
- *
- *   npx hardhat --network sepolia deploy
- *
- * 2. Interact with the InfoTrade contract
- *
- *   npx hardhat --network sepolia infotrade:address
- *   npx hardhat --network sepolia infotrade:create --title "My Secret" --info "Secret trading algorithm" --price 1000000
- *   npx hardhat --network sepolia infotrade:list
- *
- */
-
-/**
- * Example:
- *   - npx hardhat --network localhost infotrade:address
- *   - npx hardhat --network sepolia infotrade:address
- */
-task("infotrade:address", "Prints the InfoTrade address").setAction(async function (_taskArguments: TaskArguments, hre) {
-  const { deployments } = hre;
-
-  const infoTrade = await deployments.get("InfoTrade");
-
-  console.log("InfoTrade address is " + infoTrade.address);
-});
-
-/**
- * Example:
- *   - npx hardhat --network localhost infotrade:create --title "Secret Algorithm" --info "My trading algorithm" --price 1000000
- *   - npx hardhat --network sepolia infotrade:create --title "Secret Algorithm" --info "My trading algorithm" --price 1000000
- */
-task("infotrade:create", "Creates a new info item")
-  .addOptionalParam("address", "Optionally specify the InfoTrade contract address")
-  .addParam("title", "The title of the info")
-  .addParam("info", "The content of the info")
-  .addParam("price", "The price of the info in ETH")
-  .setAction(async function (taskArguments: TaskArguments, hre) {
-    const { ethers, deployments, fhevm } = hre;
-
-    const price = parseFloat(taskArguments.price);
-    if (!Number.isFinite(price) || price <= 0) {
-      throw new Error(`Argument --price must be a positive number`);
-    }
-
-    await fhevm.initializeCLIApi();
-
-    const infoTradeDeployment = taskArguments.address
-      ? { address: taskArguments.address }
-      : await deployments.get("InfoTrade");
-    console.log(`InfoTrade: ${infoTradeDeployment.address}`);
-
+task("task:store-info")
+  .addParam("name", "The name of the info")
+  .addParam("info", "The info content")
+  .addParam("address", "The encrypted address")
+  .setAction(async function (taskArguments: TaskArguments, { ethers, fhevm }) {
+    const { name, info, address } = taskArguments;
     const signers = await ethers.getSigners();
+    const contractFactory = await ethers.getContractFactory("InfoTrade");
+    const contract = contractFactory.attach("0x5FbDB2315678afecb367f032d93F642f64180aa3"); // Default hardhat address
 
-    const infoTradeContract = await ethers.getContractAt("InfoTrade", infoTradeDeployment.address);
+    const input = fhevm.createEncryptedInput(contract.target, signers[0].address);
+    input.addAddress(address);
+    const encryptedInput = await input.encrypt();
 
-    // Encrypt only the owner address (price is now plaintext)
-    const encryptedInput = await fhevm
-      .createEncryptedInput(infoTradeDeployment.address, signers[0].address)
-      .addAddress(signers[0].address)
-      .encrypt();
-
-    const priceInWei = ethers.parseEther(taskArguments.price);
-
-    const tx = await infoTradeContract
-      .connect(signers[0])
-      .createInfo(
-        taskArguments.title,
-        taskArguments.info,
-        encryptedInput.handles[0],
-        priceInWei,
-        encryptedInput.inputProof
-      );
-    console.log(`Wait for tx:${tx.hash}...`);
-
-    const receipt = await tx.wait();
-    console.log(`tx:${tx.hash} status=${receipt?.status}`);
-
-    const totalCount = await infoTradeContract.getTotalInfoCount();
-    console.log(`InfoTrade createInfo("${taskArguments.title}") succeeded! Total info count: ${totalCount}`);
+    const transaction = await contract.storeInfo(name, info, encryptedInput.handles[0], encryptedInput.inputProof);
+    await transaction.wait();
+    console.log(`Info stored with name: ${name}`);
   });
 
-/**
- * Example:
- *   - npx hardhat --network localhost infotrade:purchase --id 1
- *   - npx hardhat --network sepolia infotrade:purchase --id 1
- */
-task("infotrade:purchase", "Purchases an info item")
-  .addOptionalParam("address", "Optionally specify the InfoTrade contract address")
-  .addParam("id", "The ID of the info to purchase")
-  .setAction(async function (taskArguments: TaskArguments, hre) {
-    const { ethers, deployments, fhevm } = hre;
-
-    const infoId = parseInt(taskArguments.id);
-    if (!Number.isInteger(infoId) || infoId <= 0) {
-      throw new Error(`Argument --id must be a positive integer`);
-    }
-
-    await fhevm.initializeCLIApi();
-
-    const infoTradeDeployment = taskArguments.address
-      ? { address: taskArguments.address }
-      : await deployments.get("InfoTrade");
-    console.log(`InfoTrade: ${infoTradeDeployment.address}`);
-
+task("task:request-access")
+  .addParam("infoid", "The ID of the info to request access to")
+  .setAction(async function (taskArguments: TaskArguments, { ethers }) {
+    const { infoid } = taskArguments;
     const signers = await ethers.getSigners();
+    const contractFactory = await ethers.getContractFactory("InfoTrade");
+    const contract = contractFactory.attach("0x5FbDB2315678afecb367f032d93F642f64180aa3");
 
-    const infoTradeContract = await ethers.getContractAt("InfoTrade", infoTradeDeployment.address);
-
-    const tx = await infoTradeContract
-      .connect(signers[1]) // Use second signer as buyer
-      .purchaseInfo(infoId);
-    console.log(`Wait for tx:${tx.hash}...`);
-
-    const receipt = await tx.wait();
-    console.log(`tx:${tx.hash} status=${receipt?.status}`);
-
-    console.log(`InfoTrade purchaseInfo(${infoId}) succeeded!`);
+    const transaction = await contract.requestAccess(infoid, { value: ethers.parseEther("0.001") });
+    await transaction.wait();
+    console.log(`Access requested for info ID: ${infoid}`);
   });
 
-/**
- * Example:
- *   - npx hardhat --network localhost infotrade:grant --id 1 --buyer 0x...
- *   - npx hardhat --network sepolia infotrade:grant --id 1 --buyer 0x...
- */
-task("infotrade:grant", "Grants access to a purchased info item")
-  .addOptionalParam("address", "Optionally specify the InfoTrade contract address")
-  .addParam("id", "The ID of the info")
-  .addParam("buyer", "The address of the buyer")
-  .setAction(async function (taskArguments: TaskArguments, hre) {
-    const { ethers, deployments, fhevm } = hre;
-
-    const infoId = parseInt(taskArguments.id);
-    if (!Number.isInteger(infoId) || infoId <= 0) {
-      throw new Error(`Argument --id must be a positive integer`);
-    }
-
-    await fhevm.initializeCLIApi();
-
-    const infoTradeDeployment = taskArguments.address
-      ? { address: taskArguments.address }
-      : await deployments.get("InfoTrade");
-    console.log(`InfoTrade: ${infoTradeDeployment.address}`);
-
+task("task:approve-access")
+  .addParam("requestid", "The ID of the request to approve")
+  .setAction(async function (taskArguments: TaskArguments, { ethers }) {
+    const { requestid } = taskArguments;
     const signers = await ethers.getSigners();
+    const contractFactory = await ethers.getContractFactory("InfoTrade");
+    const contract = contractFactory.attach("0x5FbDB2315678afecb367f032d93F642f64180aa3");
 
-    const infoTradeContract = await ethers.getContractAt("InfoTrade", infoTradeDeployment.address);
-
-    const tx = await infoTradeContract
-      .connect(signers[0]) // Owner grants access
-      .grantAccess(infoId, taskArguments.buyer);
-    console.log(`Wait for tx:${tx.hash}...`);
-
-    const receipt = await tx.wait();
-    console.log(`tx:${tx.hash} status=${receipt?.status}`);
-
-    console.log(`InfoTrade grantAccess(${infoId}, ${taskArguments.buyer}) succeeded!`);
+    const transaction = await contract.approveAccess(requestid);
+    await transaction.wait();
+    console.log(`Access approved for request ID: ${requestid}`);
   });
 
-/**
- * Example:
- *   - npx hardhat --network localhost infotrade:list
- *   - npx hardhat --network sepolia infotrade:list
- */
-task("infotrade:list", "Lists all info items")
-  .addOptionalParam("address", "Optionally specify the InfoTrade contract address")
-  .setAction(async function (taskArguments: TaskArguments, hre) {
-    const { ethers, deployments } = hre;
-
-    const infoTradeDeployment = taskArguments.address
-      ? { address: taskArguments.address }
-      : await deployments.get("InfoTrade");
-    console.log(`InfoTrade: ${infoTradeDeployment.address}`);
-
+task("task:get-info")
+  .addParam("infoid", "The ID of the info to get")
+  .setAction(async function (taskArguments: TaskArguments, { ethers }) {
+    const { infoid } = taskArguments;
     const signers = await ethers.getSigners();
+    const contractFactory = await ethers.getContractFactory("InfoTrade");
+    const contract = contractFactory.attach("0x5FbDB2315678afecb367f032d93F642f64180aa3");
 
-    const infoTradeContract = await ethers.getContractAt("InfoTrade", infoTradeDeployment.address);
-
-    const totalCount = await infoTradeContract.getTotalInfoCount();
-    console.log(`Total info items: ${totalCount}`);
-
-    for (let i = 1; i <= totalCount; i++) {
-      try {
-        const basicDetails = await infoTradeContract
-          .connect(signers[0])
-          .getInfoBasicDetails(i);
-
-        console.log(`\nInfo ID: ${i}`);
-        console.log(`Title: ${basicDetails.title}`);
-        console.log(`Owner: ${basicDetails.owner}`);
-        console.log(`Active: ${basicDetails.isActive}`);
-        console.log(`Created: ${new Date(Number(basicDetails.createdAt) * 1000).toISOString()}`);
-        console.log(`Has Access: ${basicDetails.hasAccess}`);
-        console.log(`Has Purchased: ${basicDetails.hasPurchased}`);
-      } catch (error) {
-        console.log(`Error getting details for info ${i}:`, error);
-      }
-    }
+    const info = await contract.getInfo(infoid);
+    console.log(`Info ID: ${info.id}`);
+    console.log(`Name: ${info.name}`);
+    console.log(`Info: ${info.info}`);
+    console.log(`Owner: ${info.owner}`);
+    console.log(`Price: ${ethers.formatEther(info.price)} ETH`);
   });
 
-/**
- * Example:
- *   - npx hardhat --network localhost infotrade:content --id 1
- *   - npx hardhat --network sepolia infotrade:content --id 1
- */
-task("infotrade:content", "Gets the content of an info item (requires access)")
-  .addOptionalParam("address", "Optionally specify the InfoTrade contract address")
-  .addParam("id", "The ID of the info")
-  .setAction(async function (taskArguments: TaskArguments, hre) {
-    const { ethers, deployments } = hre;
-
-    const infoId = parseInt(taskArguments.id);
-    if (!Number.isInteger(infoId) || infoId <= 0) {
-      throw new Error(`Argument --id must be a positive integer`);
-    }
-
-    const infoTradeDeployment = taskArguments.address
-      ? { address: taskArguments.address }
-      : await deployments.get("InfoTrade");
-    console.log(`InfoTrade: ${infoTradeDeployment.address}`);
-
+task("task:get-all-active-infos")
+  .setAction(async function (taskArguments: TaskArguments, { ethers }) {
     const signers = await ethers.getSigners();
+    const contractFactory = await ethers.getContractFactory("InfoTrade");
+    const contract = contractFactory.attach("0x5FbDB2315678afecb367f032d93F642f64180aa3");
 
-    const infoTradeContract = await ethers.getContractAt("InfoTrade", infoTradeDeployment.address);
+    const allInfos = await contract.getAllInfos();
+    console.log(`All info IDs: ${allInfos.join(", ")}`);
+  });
 
-    try {
-      const content = await infoTradeContract
-        .connect(signers[0])
-        .getInfoContent(infoId);
+task("task:get-user-infos")
+  .addParam("user", "The user address")
+  .setAction(async function (taskArguments: TaskArguments, { ethers }) {
+    const { user } = taskArguments;
+    const signers = await ethers.getSigners();
+    const contractFactory = await ethers.getContractFactory("InfoTrade");
+    const contract = contractFactory.attach("0x5FbDB2315678afecb367f032d93F642f64180aa3");
 
-      console.log(`Content of info ${infoId}:`);
-      console.log(content);
-    } catch (error) {
-      console.log(`Error: You don't have access to this info or it doesn't exist.`);
-    }
+    const userInfos = await contract.getUserInfoItems(user);
+    console.log(`User info IDs: ${userInfos.join(", ")}`);
   });
