@@ -58,13 +58,13 @@ task("infotrade:create", "Creates a new info item")
   .addOptionalParam("address", "Optionally specify the InfoTrade contract address")
   .addParam("title", "The title of the info")
   .addParam("info", "The content of the info")
-  .addParam("price", "The price of the info")
+  .addParam("price", "The price of the info in ETH")
   .setAction(async function (taskArguments: TaskArguments, hre) {
     const { ethers, deployments, fhevm } = hre;
 
-    const price = parseInt(taskArguments.price);
-    if (!Number.isInteger(price) || price <= 0) {
-      throw new Error(`Argument --price must be a positive integer`);
+    const price = parseFloat(taskArguments.price);
+    if (!Number.isFinite(price) || price <= 0) {
+      throw new Error(`Argument --price must be a positive number`);
     }
 
     await fhevm.initializeCLIApi();
@@ -78,12 +78,13 @@ task("infotrade:create", "Creates a new info item")
 
     const infoTradeContract = await ethers.getContractAt("InfoTrade", infoTradeDeployment.address);
 
-    // Encrypt the owner address and price
+    // Encrypt only the owner address (price is now plaintext)
     const encryptedInput = await fhevm
       .createEncryptedInput(infoTradeDeployment.address, signers[0].address)
       .addAddress(signers[0].address)
-      .add64(price)
       .encrypt();
+
+    const priceInWei = ethers.parseEther(taskArguments.price);
 
     const tx = await infoTradeContract
       .connect(signers[0])
@@ -91,7 +92,7 @@ task("infotrade:create", "Creates a new info item")
         taskArguments.title,
         taskArguments.info,
         encryptedInput.handles[0],
-        encryptedInput.handles[1],
+        priceInWei,
         encryptedInput.inputProof
       );
     console.log(`Wait for tx:${tx.hash}...`);

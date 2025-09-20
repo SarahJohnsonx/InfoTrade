@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
-import { FHE, euint32, euint64, eaddress, externalEuint32, externalEuint64, externalEaddress } from "@fhevm/solidity/lib/FHE.sol";
+import { FHE, euint32, eaddress, externalEuint32, externalEaddress } from "@fhevm/solidity/lib/FHE.sol";
 import { SepoliaConfig } from "@fhevm/solidity/config/ZamaConfig.sol";
 
 contract InfoTrade is SepoliaConfig {
@@ -9,7 +9,7 @@ contract InfoTrade is SepoliaConfig {
         string title;
         string info;
         eaddress encryptedOwner;
-        euint64 price;
+        uint256 price;
         bool isActive;
         address owner;
         uint256 createdAt;
@@ -37,14 +37,14 @@ contract InfoTrade is SepoliaConfig {
         string memory title,
         string memory info,
         externalEaddress encryptedOwnerAddress,
-        externalEuint64 encryptedPrice,
+        uint256 price,
         bytes calldata inputProof
     ) external {
         require(bytes(title).length > 0, "Title cannot be empty");
         require(bytes(info).length > 0, "Info cannot be empty");
+        require(price > 0, "Price must be greater than 0");
 
         eaddress ownerAddress = FHE.fromExternal(encryptedOwnerAddress, inputProof);
-        euint64 price = FHE.fromExternal(encryptedPrice, inputProof);
 
         uint256 infoId = nextInfoId++;
 
@@ -60,8 +60,6 @@ contract InfoTrade is SepoliaConfig {
 
         FHE.allowThis(ownerAddress);
         FHE.allow(ownerAddress, msg.sender);
-        FHE.allowThis(price);
-        FHE.allow(price, msg.sender);
 
         userInfoItems[msg.sender].push(infoId);
 
@@ -73,16 +71,17 @@ contract InfoTrade is SepoliaConfig {
         require(infoItems[infoId].isActive, "Info is not active");
         require(infoItems[infoId].owner != msg.sender, "Cannot purchase your own info");
         require(!infoItems[infoId].hasPurchased[msg.sender], "Already purchased");
+        require(msg.value >= infoItems[infoId].price, "Insufficient payment");
 
         address seller = infoItems[infoId].owner;
-
-        euint64 encryptedPrice = infoItems[infoId].price;
-        FHE.allowThis(encryptedPrice);
 
         infoItems[infoId].hasPurchased[msg.sender] = true;
         userPurchases[msg.sender].push(infoId);
 
-        FHE.allow(encryptedPrice, msg.sender);
+        // Transfer payment to seller
+        (bool success, ) = payable(seller).call{value: msg.value}("");
+        require(success, "Payment transfer failed");
+
         FHE.allow(infoItems[infoId].encryptedOwner, msg.sender);
 
         emit InfoPurchased(infoId, msg.sender, seller, block.timestamp);
@@ -97,27 +96,22 @@ contract InfoTrade is SepoliaConfig {
         infoItems[infoId].hasAccess[buyer] = true;
 
         FHE.allow(infoItems[infoId].encryptedOwner, buyer);
-        FHE.allow(infoItems[infoId].price, buyer);
 
         emit AccessGranted(infoId, buyer, block.timestamp);
     }
 
     function updatePrice(
         uint256 infoId,
-        externalEuint64 newEncryptedPrice,
-        bytes calldata inputProof
+        uint256 newPrice
     ) external {
         require(infoId < nextInfoId && infoId > 0, "Invalid info ID");
         require(infoItems[infoId].owner == msg.sender, "Only owner can update price");
         require(infoItems[infoId].isActive, "Info is not active");
+        require(newPrice > 0, "Price must be greater than 0");
 
-        euint64 newPrice = FHE.fromExternal(newEncryptedPrice, inputProof);
         infoItems[infoId].price = newPrice;
 
-        FHE.allowThis(newPrice);
-        FHE.allow(newPrice, msg.sender);
-
-        emit InfoUpdated(infoId, 0, block.timestamp);
+        emit InfoUpdated(infoId, newPrice, block.timestamp);
     }
 
     function deactivateInfo(uint256 infoId) external {
@@ -158,7 +152,7 @@ contract InfoTrade is SepoliaConfig {
         return infoItems[infoId].info;
     }
 
-    function getEncryptedPrice(uint256 infoId) external view returns (euint64) {
+    function getPrice(uint256 infoId) external view returns (uint256) {
         require(infoId < nextInfoId && infoId > 0, "Invalid info ID");
         return infoItems[infoId].price;
     }
