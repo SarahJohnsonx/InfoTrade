@@ -1,5 +1,5 @@
-// InfoTrade contract deployed on localhost
-export const CONTRACT_ADDRESS = '0x5FbDB2315678afecb367f032d93F642f64180aa3';
+// InfoTrade contract deployed on Sepolia
+export const CONTRACT_ADDRESS = '0x914D5bBeF1F46fcDCb65B15A1276B3CF33C6D304';
 
 // Generated ABI from contract artifacts - Auto-synced from InfoTrade.json
 export const CONTRACT_ABI = [
@@ -206,25 +206,6 @@ export const CONTRACT_ABI = [
         "internalType": "uint256[]",
         "name": "",
         "type": "uint256[]"
-      }
-    ],
-    "stateMutability": "view",
-    "type": "function"
-  },
-  {
-    "inputs": [
-      {
-        "internalType": "uint256",
-        "name": "infoId",
-        "type": "uint256"
-      }
-    ],
-    "name": "getEncryptedAddress",
-    "outputs": [
-      {
-        "internalType": "eaddress",
-        "name": "",
-        "type": "bytes32"
       }
     ],
     "stateMutability": "view",

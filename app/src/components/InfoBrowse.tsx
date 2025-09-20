@@ -3,6 +3,7 @@ import { useAccount } from 'wagmi';
 import { Contract } from 'ethers';
 import { formatEther } from 'viem';
 import { useEthersSigner } from '../hooks/useEthersSigner';
+import { useZamaInstance } from '../hooks/useZamaInstance';
 import { CONTRACT_ADDRESS, CONTRACT_ABI } from '../config/contracts';
 import '../styles/InfoBrowse.css';
 
@@ -14,11 +15,13 @@ interface InfoItem {
   price: string;
   createdAt: string;
   hasAccess: boolean;
+  decryptedAddress?: string;
 }
 
 export function InfoBrowse() {
   const { address } = useAccount();
   const signerPromise = useEthersSigner();
+  const { instance: zamaInstance } = useZamaInstance();
 
   const [infoItems, setInfoItems] = useState<InfoItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -28,6 +31,7 @@ export function InfoBrowse() {
     type: 'success' | 'error' | null;
     message: string;
   }>({ type: null, message: '' });
+  const [decryptingItems, setDecryptingItems] = useState<Set<string>>(new Set());
 
   const loadInfoItems = async () => {
     if (!signerPromise || !address) return;
@@ -52,6 +56,8 @@ export function InfoBrowse() {
         try {
           const info = await contract.getInfo(id);
           const hasAccess = await contract.hasAccessToInfo(id, address);
+
+          // Decryption will be handled by manual action
 
           items.push({
             id: id.toString(),
@@ -122,11 +128,85 @@ export function InfoBrowse() {
     }
   };
 
+  const decryptAddress = async (infoId: string) => {
+    if (!signerPromise || !address || !zamaInstance) return;
+
+    setDecryptingItems(prev => new Set(prev).add(infoId));
+
+    try {
+      const signer = await signerPromise;
+      if (!signer) return;
+
+      const contract = new Contract(CONTRACT_ADDRESS, CONTRACT_ABI, signer);
+      const infoData = await contract.getInfo(infoId);
+      const encryptedAddressHandle = infoData.encryptedAddress;
+
+      // Create keypair for user decryption
+      const keypair = zamaInstance.generateKeypair();
+      const handleContractPairs = [{
+        handle: encryptedAddressHandle,
+        contractAddress: CONTRACT_ADDRESS
+      }];
+
+      const startTimeStamp = Math.floor(Date.now() / 1000).toString();
+      const durationDays = "10";
+      const contractAddresses = [CONTRACT_ADDRESS];
+
+      const eip712 = zamaInstance.createEIP712(
+        keypair.publicKey,
+        contractAddresses,
+        startTimeStamp,
+        durationDays
+      );
+
+      const signature = await signer.signTypedData(
+        eip712.domain,
+        { UserDecryptRequestVerification: eip712.types.UserDecryptRequestVerification },
+        eip712.message
+      );
+
+      const result = await zamaInstance.userDecrypt(
+        handleContractPairs,
+        keypair.privateKey,
+        keypair.publicKey,
+        signature.replace("0x", ""),
+        contractAddresses,
+        address,
+        startTimeStamp,
+        durationDays
+      );
+
+      const decryptedAddress = result[encryptedAddressHandle];
+
+      // Update the item with decrypted address
+      setInfoItems(prevItems =>
+        prevItems.map(item =>
+          item.id === infoId
+            ? { ...item, decryptedAddress }
+            : item
+        )
+      );
+
+    } catch (error: any) {
+      console.error('Error decrypting address:', error);
+      setStatusMessage({
+        type: 'error',
+        message: 'Failed to decrypt address. Please try again.'
+      });
+    } finally {
+      setDecryptingItems(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(infoId);
+        return newSet;
+      });
+    }
+  };
+
   useEffect(() => {
-    if (address && signerPromise) {
+    if (address && signerPromise && zamaInstance) {
       loadInfoItems();
     }
-  }, [address, signerPromise]);
+  }, [address, signerPromise, zamaInstance]);
 
   if (isLoading) {
     return (
@@ -186,13 +266,36 @@ export function InfoBrowse() {
                   <span className="info-label">Created:</span>
                   <span className="info-value">{item.createdAt}</span>
                 </div>
+
+                {item.hasAccess && item.decryptedAddress && (
+                  <div className="info-field encrypted-address">
+                    <span className="info-label">Target Address:</span>
+                    <span className="info-value address decrypted">
+                      {item.decryptedAddress}
+                    </span>
+                  </div>
+                )}
               </div>
 
               <div className="info-card-actions">
                 {item.owner.toLowerCase() === address?.toLowerCase() ? (
                   <span className="owner-badge">You own this</span>
                 ) : item.hasAccess ? (
-                  <span className="access-badge">Access Granted</span>
+                  <div className="access-granted">
+                    <span className="access-badge">Access Granted</span>
+                    {!item.decryptedAddress ? (
+                      <button
+                        onClick={() => decryptAddress(item.id)}
+                        disabled={decryptingItems.has(item.id)}
+                        className="decrypt-button"
+                      >
+                        {decryptingItems.has(item.id)
+                          ? 'Decrypting...'
+                          : 'Decrypt Address'
+                        }
+                      </button>
+                    ) : null}
+                  </div>
                 ) : (
                   <button
                     onClick={() => requestAccess(item.id)}
