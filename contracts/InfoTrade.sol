@@ -1,186 +1,212 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
-import { FHE, euint32, eaddress, externalEuint32, externalEaddress } from "@fhevm/solidity/lib/FHE.sol";
-import { SepoliaConfig } from "@fhevm/solidity/config/ZamaConfig.sol";
+import {FHE, euint32, externalEuint32, eaddress, externalEaddress} from "@fhevm/solidity/lib/FHE.sol";
+import {SepoliaConfig} from "@fhevm/solidity/config/ZamaConfig.sol";
 
 contract InfoTrade is SepoliaConfig {
     struct InfoItem {
-        string title;
+        uint256 id;
+        string name;
         string info;
-        eaddress encryptedOwner;
-        uint256 price;
-        bool isActive;
+        eaddress encryptedAddress;
         address owner;
+        uint256 price;
         uint256 createdAt;
-        mapping(address => bool) hasPurchased;
-        mapping(address => bool) hasAccess;
+    }
+
+    struct AccessRequest {
+        uint256 infoId;
+        address requester;
+        uint256 amount;
+        bool isPending;
+        bool isApproved;
+        uint256 createdAt;
     }
 
     mapping(uint256 => InfoItem) public infoItems;
-    uint256 public nextInfoId;
-
+    mapping(uint256 => AccessRequest) public accessRequests;
+    mapping(uint256 => mapping(address => bool)) public hasAccess;
     mapping(address => uint256[]) public userInfoItems;
-    mapping(address => uint256[]) public userPurchases;
+    mapping(address => uint256[]) public userRequests;
+    mapping(address => uint256[]) public ownerPendingRequests;
 
-    event InfoCreated(uint256 indexed infoId, address indexed owner, string title, uint256 timestamp);
-    event InfoPurchased(uint256 indexed infoId, address indexed buyer, address indexed seller, uint256 timestamp);
-    event AccessGranted(uint256 indexed infoId, address indexed buyer, uint256 timestamp);
-    event InfoUpdated(uint256 indexed infoId, uint256 newPrice, uint256 timestamp);
-    event InfoDeactivated(uint256 indexed infoId, uint256 timestamp);
+    uint256 public nextInfoId = 1;
+    uint256 public nextRequestId = 1;
+    uint256 public constant ACCESS_PRICE = 0.001 ether;
 
-    constructor() {
-        nextInfoId = 1;
+    event InfoStored(uint256 indexed infoId, address indexed owner, string name, uint256 price);
+
+    event AccessRequested(uint256 indexed requestId, uint256 indexed infoId, address indexed requester, uint256 amount);
+
+    event AccessApproved(uint256 indexed requestId, uint256 indexed infoId, address indexed requester);
+
+    event AccessDenied(uint256 indexed requestId, uint256 indexed infoId, address indexed requester);
+
+    modifier onlyInfoOwner(uint256 infoId) {
+        require(infoItems[infoId].owner == msg.sender, "Not info owner");
+        _;
     }
 
-    function createInfo(
-        string memory title,
-        string memory info,
-        externalEaddress encryptedOwnerAddress,
-        uint256 price,
+    modifier infoExists(uint256 infoId) {
+        require(infoItems[infoId].owner != address(0), "Info does not exist");
+        _;
+    }
+
+    modifier requestExists(uint256 requestId) {
+        require(accessRequests[requestId].requester != address(0), "Request does not exist");
+        _;
+    }
+
+    function storeInfo(
+        string calldata name,
+        string calldata info,
+        externalEaddress encryptedAddress,
         bytes calldata inputProof
     ) external {
-        require(bytes(title).length > 0, "Title cannot be empty");
+        require(bytes(name).length > 0, "Name cannot be empty");
         require(bytes(info).length > 0, "Info cannot be empty");
-        require(price > 0, "Price must be greater than 0");
 
-        eaddress ownerAddress = FHE.fromExternal(encryptedOwnerAddress, inputProof);
+        eaddress validatedEncryptedAddress = FHE.fromExternal(encryptedAddress, inputProof);
 
         uint256 infoId = nextInfoId++;
 
-        InfoItem storage newInfo = infoItems[infoId];
-        newInfo.title = title;
-        newInfo.info = info;
-        newInfo.encryptedOwner = ownerAddress;
-        newInfo.price = price;
-        newInfo.isActive = true;
-        newInfo.owner = msg.sender;
-        newInfo.createdAt = block.timestamp;
-        newInfo.hasAccess[msg.sender] = true;
-
-        FHE.allowThis(ownerAddress);
-        FHE.allow(ownerAddress, msg.sender);
+        infoItems[infoId] = InfoItem({
+            id: infoId,
+            name: name,
+            info: info,
+            encryptedAddress: validatedEncryptedAddress,
+            owner: msg.sender,
+            price: ACCESS_PRICE,
+            createdAt: block.timestamp
+        });
 
         userInfoItems[msg.sender].push(infoId);
 
-        emit InfoCreated(infoId, msg.sender, title, block.timestamp);
+        FHE.allowThis(validatedEncryptedAddress);
+        FHE.allow(validatedEncryptedAddress, msg.sender);
+
+        emit InfoStored(infoId, msg.sender, name, ACCESS_PRICE);
     }
 
-    function purchaseInfo(uint256 infoId) external payable {
-        require(infoId < nextInfoId && infoId > 0, "Invalid info ID");
-        require(infoItems[infoId].isActive, "Info is not active");
-        require(infoItems[infoId].owner != msg.sender, "Cannot purchase your own info");
-        require(!infoItems[infoId].hasPurchased[msg.sender], "Already purchased");
-        require(msg.value >= infoItems[infoId].price, "Insufficient payment");
+    function requestAccess(uint256 infoId) external payable infoExists(infoId) {
+        require(msg.value >= ACCESS_PRICE, "Insufficient payment");
+        require(infoItems[infoId].owner != msg.sender, "Cannot request access to own info");
+        require(!hasAccess[infoId][msg.sender], "Already has access");
 
-        address seller = infoItems[infoId].owner;
+        uint256 requestId = nextRequestId++;
 
-        infoItems[infoId].hasPurchased[msg.sender] = true;
-        userPurchases[msg.sender].push(infoId);
+        accessRequests[requestId] = AccessRequest({
+            infoId: infoId,
+            requester: msg.sender,
+            amount: msg.value,
+            isPending: true,
+            isApproved: false,
+            createdAt: block.timestamp
+        });
 
-        // Transfer payment to seller
-        (bool success, ) = payable(seller).call{value: msg.value}("");
-        require(success, "Payment transfer failed");
+        userRequests[msg.sender].push(requestId);
+        ownerPendingRequests[infoItems[infoId].owner].push(requestId);
 
-        FHE.allow(infoItems[infoId].encryptedOwner, msg.sender);
-
-        emit InfoPurchased(infoId, msg.sender, seller, block.timestamp);
+        emit AccessRequested(requestId, infoId, msg.sender, msg.value);
     }
 
-    function grantAccess(uint256 infoId, address buyer) external {
-        require(infoId < nextInfoId && infoId > 0, "Invalid info ID");
-        require(infoItems[infoId].owner == msg.sender, "Only owner can grant access");
-        require(infoItems[infoId].hasPurchased[buyer], "Buyer has not purchased");
-        require(!infoItems[infoId].hasAccess[buyer], "Access already granted");
+    function approveAccess(uint256 requestId) external requestExists(requestId) {
+        AccessRequest storage request = accessRequests[requestId];
+        require(request.isPending, "Request is not pending");
 
-        infoItems[infoId].hasAccess[buyer] = true;
+        InfoItem storage item = infoItems[request.infoId];
+        require(item.owner == msg.sender, "Not authorized to approve");
 
-        FHE.allow(infoItems[infoId].encryptedOwner, buyer);
+        request.isPending = false;
+        request.isApproved = true;
+        hasAccess[request.infoId][request.requester] = true;
 
-        emit AccessGranted(infoId, buyer, block.timestamp);
+        FHE.allow(item.encryptedAddress, request.requester);
+
+        _removeFromArray(ownerPendingRequests[msg.sender], requestId);
+
+        payable(msg.sender).transfer(request.amount);
+
+        emit AccessApproved(requestId, request.infoId, request.requester);
     }
 
-    function updatePrice(
-        uint256 infoId,
-        uint256 newPrice
-    ) external {
-        require(infoId < nextInfoId && infoId > 0, "Invalid info ID");
-        require(infoItems[infoId].owner == msg.sender, "Only owner can update price");
-        require(infoItems[infoId].isActive, "Info is not active");
-        require(newPrice > 0, "Price must be greater than 0");
+    function denyAccess(uint256 requestId) external requestExists(requestId) {
+        AccessRequest storage request = accessRequests[requestId];
+        require(request.isPending, "Request is not pending");
 
-        infoItems[infoId].price = newPrice;
+        InfoItem storage item = infoItems[request.infoId];
+        require(item.owner == msg.sender, "Not authorized to deny");
 
-        emit InfoUpdated(infoId, newPrice, block.timestamp);
+        request.isPending = false;
+        request.isApproved = false;
+
+        _removeFromArray(ownerPendingRequests[msg.sender], requestId);
+
+        payable(request.requester).transfer(request.amount);
+
+        emit AccessDenied(requestId, request.infoId, request.requester);
     }
 
-    function deactivateInfo(uint256 infoId) external {
-        require(infoId < nextInfoId && infoId > 0, "Invalid info ID");
-        require(infoItems[infoId].owner == msg.sender, "Only owner can deactivate");
-        require(infoItems[infoId].isActive, "Info already inactive");
-
-        infoItems[infoId].isActive = false;
-
-        emit InfoDeactivated(infoId, block.timestamp);
+    function getInfo(uint256 infoId) external view infoExists(infoId) returns (InfoItem memory) {
+        InfoItem storage item = infoItems[infoId];
+        return item;
     }
 
-    function getInfoBasicDetails(uint256 infoId) external view returns (
-        string memory title,
-        address owner,
-        bool isActive,
-        uint256 createdAt,
-        bool hasPurchased,
-        bool hasAccess
-    ) {
-        require(infoId < nextInfoId && infoId > 0, "Invalid info ID");
-
-        InfoItem storage info = infoItems[infoId];
-        return (
-            info.title,
-            info.owner,
-            info.isActive,
-            info.createdAt,
-            info.hasPurchased[msg.sender],
-            info.hasAccess[msg.sender]
+    function getEncryptedAddress(uint256 infoId) external view infoExists(infoId) returns (eaddress) {
+        require(
+            hasAccess[infoId][msg.sender] || infoItems[infoId].owner == msg.sender,
+            "No access to encrypted address"
         );
-    }
-
-    function getInfoContent(uint256 infoId) external view returns (string memory) {
-        require(infoId < nextInfoId && infoId > 0, "Invalid info ID");
-        require(infoItems[infoId].hasAccess[msg.sender], "No access to this info");
-
-        return infoItems[infoId].info;
-    }
-
-    function getPrice(uint256 infoId) external view returns (uint256) {
-        require(infoId < nextInfoId && infoId > 0, "Invalid info ID");
-        return infoItems[infoId].price;
-    }
-
-    function getEncryptedOwner(uint256 infoId) external view returns (eaddress) {
-        require(infoId < nextInfoId && infoId > 0, "Invalid info ID");
-        return infoItems[infoId].encryptedOwner;
+        return infoItems[infoId].encryptedAddress;
     }
 
     function getUserInfoItems(address user) external view returns (uint256[] memory) {
         return userInfoItems[user];
     }
 
-    function getUserPurchases(address user) external view returns (uint256[] memory) {
-        return userPurchases[user];
+    function getUserRequests(address user) external view returns (uint256[] memory) {
+        return userRequests[user];
     }
 
-    function getTotalInfoCount() external view returns (uint256) {
-        return nextInfoId - 1;
+    function getPendingRequests(address owner) external view returns (uint256[] memory) {
+        return ownerPendingRequests[owner];
     }
 
-    function hasUserPurchased(uint256 infoId, address user) external view returns (bool) {
-        require(infoId < nextInfoId && infoId > 0, "Invalid info ID");
-        return infoItems[infoId].hasPurchased[user];
+    function hasAccessToInfo(uint256 infoId, address user) external view returns (bool) {
+        return hasAccess[infoId][user] || infoItems[infoId].owner == user;
     }
 
-    function hasUserAccess(uint256 infoId, address user) external view returns (bool) {
-        require(infoId < nextInfoId && infoId > 0, "Invalid info ID");
-        return infoItems[infoId].hasAccess[user];
+    function getOwnerPendingRequests(address owner) external view returns (uint256[] memory) {
+        return ownerPendingRequests[owner];
+    }
+
+    function _removeFromArray(uint256[] storage array, uint256 value) internal {
+        for (uint256 i = 0; i < array.length; i++) {
+            if (array[i] == value) {
+                array[i] = array[array.length - 1];
+                array.pop();
+                break;
+            }
+        }
+    }
+
+    function getAllInfos() external view returns (uint256[] memory) {
+        uint256[] memory allInfos = new uint256[](nextInfoId - 1);
+        uint256 count = 0;
+
+        for (uint256 i = 1; i < nextInfoId; i++) {
+            if (infoItems[i].owner != address(0)) {
+                allInfos[count] = i;
+                count++;
+            }
+        }
+
+        uint256[] memory result = new uint256[](count);
+        for (uint256 i = 0; i < count; i++) {
+            result[i] = allInfos[i];
+        }
+
+        return result;
     }
 }
