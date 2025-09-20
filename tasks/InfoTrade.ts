@@ -9,6 +9,7 @@ task("task:store-info")
   .setAction(async function (taskArguments: TaskArguments, { ethers, fhevm }) {
     const { name, info, address } = taskArguments;
     const signers = await ethers.getSigners();
+    await fhevm.initializeCLIApi()
     const contractFactory = await ethers.getContractFactory("InfoTrade");
     const contract = contractFactory.attach("0x5FbDB2315678afecb367f032d93F642f64180aa3"); // Default hardhat address
 
@@ -23,15 +24,18 @@ task("task:store-info")
 
 task("task:request-access")
   .addParam("infoid", "The ID of the info to request access to")
+  .addOptionalParam("account", "Account index to use (default: 1)", "1")
   .setAction(async function (taskArguments: TaskArguments, { ethers }) {
-    const { infoid } = taskArguments;
+    const { infoid, account } = taskArguments;
     const signers = await ethers.getSigners();
+    const accountIndex = parseInt(account);
     const contractFactory = await ethers.getContractFactory("InfoTrade");
     const contract = contractFactory.attach("0x5FbDB2315678afecb367f032d93F642f64180aa3");
 
-    const transaction = await contract.requestAccess(infoid, { value: ethers.parseEther("0.001") });
+    console.log(`Using account ${accountIndex}: ${signers[accountIndex].address}`);
+    const transaction = await contract.connect(signers[accountIndex]).requestAccess(infoid, { value: ethers.parseEther("0.001") });
     await transaction.wait();
-    console.log(`Access requested for info ID: ${infoid}`);
+    console.log(`Access requested for info ID: ${infoid} by account ${accountIndex}`);
   });
 
 task("task:approve-access")
@@ -45,6 +49,19 @@ task("task:approve-access")
     const transaction = await contract.approveAccess(requestid);
     await transaction.wait();
     console.log(`Access approved for request ID: ${requestid}`);
+  });
+
+task("task:deny-access")
+  .addParam("requestid", "The ID of the request to deny")
+  .setAction(async function (taskArguments: TaskArguments, { ethers }) {
+    const { requestid } = taskArguments;
+    const signers = await ethers.getSigners();
+    const contractFactory = await ethers.getContractFactory("InfoTrade");
+    const contract = contractFactory.attach("0x5FbDB2315678afecb367f032d93F642f64180aa3");
+
+    const transaction = await contract.denyAccess(requestid);
+    await transaction.wait();
+    console.log(`Access denied for request ID: ${requestid}`);
   });
 
 task("task:get-info")
@@ -83,4 +100,16 @@ task("task:get-user-infos")
 
     const userInfos = await contract.getUserInfoItems(user);
     console.log(`User info IDs: ${userInfos.join(", ")}`);
+  });
+
+task("task:get-pending-requests")
+  .addParam("owner", "The owner address")
+  .setAction(async function (taskArguments: TaskArguments, { ethers }) {
+    const { owner } = taskArguments;
+    const signers = await ethers.getSigners();
+    const contractFactory = await ethers.getContractFactory("InfoTrade");
+    const contract = contractFactory.attach("0x5FbDB2315678afecb367f032d93F642f64180aa3");
+
+    const pendingRequests = await contract.getOwnerPendingRequests(owner);
+    console.log(`Pending request IDs for owner: ${pendingRequests.join(", ")}`);
   });

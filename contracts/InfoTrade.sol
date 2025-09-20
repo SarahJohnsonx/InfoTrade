@@ -91,7 +91,6 @@ contract InfoTrade is SepoliaConfig {
 
     function requestAccess(uint256 infoId) external payable infoExists(infoId) {
         require(msg.value >= ACCESS_PRICE, "Insufficient payment");
-        require(infoItems[infoId].owner != msg.sender, "Cannot request access to own info");
         require(!hasAccess[infoId][msg.sender], "Already has access");
 
         uint256 requestId = nextRequestId++;
@@ -151,14 +150,6 @@ contract InfoTrade is SepoliaConfig {
     function getInfo(uint256 infoId) external view infoExists(infoId) returns (InfoItem memory) {
         InfoItem storage item = infoItems[infoId];
         return item;
-    }
-
-    function getEncryptedAddress(uint256 infoId) external view infoExists(infoId) returns (eaddress) {
-        require(
-            hasAccess[infoId][msg.sender] || infoItems[infoId].owner == msg.sender,
-            "No access to encrypted address"
-        );
-        return infoItems[infoId].encryptedAddress;
     }
 
     function getUserInfoItems(address user) external view returns (uint256[] memory) {
