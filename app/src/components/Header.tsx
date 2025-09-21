@@ -10,9 +10,7 @@ export function Header() {
             <h1 className="header-title">
               InfoTrade
             </h1>
-            <span className="header-badge">
-              Encrypted Info Trading
-            </span>
+           
           </div>
           <ConnectButton />
         </div>

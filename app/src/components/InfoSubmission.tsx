@@ -27,25 +27,6 @@ function encryptByKey(data: string, keyAddress: string): string {
   return btoa(encrypted); // Base64 encode the result
 }
 
-// Decrypt function using the same key address
-function decryptByKey(encryptedData: string, keyAddress: string): string {
-  try {
-    const encrypted = atob(encryptedData); // Base64 decode
-    const keyBytes = keyAddress.slice(2); // Remove 0x prefix
-    let decrypted = '';
-
-    for (let i = 0; i < encrypted.length; i++) {
-      const encryptedChar = encrypted.charCodeAt(i);
-      const keyChar = parseInt(keyBytes[(i * 2) % keyBytes.length] + keyBytes[(i * 2 + 1) % keyBytes.length], 16);
-      decrypted += String.fromCharCode(encryptedChar ^ keyChar);
-    }
-
-    return decrypted;
-  } catch (error) {
-    console.error('Decryption failed:', error);
-    return '';
-  }
-}
 
 export function InfoSubmission() {
   const { address } = useAccount();
