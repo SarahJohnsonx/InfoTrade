@@ -72,19 +72,10 @@ export function InfoSubmission() {
       return;
     }
 
-    if (!formData.name.trim() || !formData.info.trim() || !formData.targetAddress.trim()) {
+    if (!formData.name.trim() || !formData.info.trim()) {
       setSubmitStatus({
         type: 'error',
         message: 'Please fill in all fields'
-      });
-      return;
-    }
-
-    // Validate Ethereum address format
-    if (!/^0x[a-fA-F0-9]{40}$/.test(formData.targetAddress)) {
-      setSubmitStatus({
-        type: 'error',
-        message: 'Invalid Ethereum address format'
       });
       return;
     }
