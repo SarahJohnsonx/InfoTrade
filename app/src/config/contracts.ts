@@ -1,5 +1,5 @@
 // InfoTrade contract deployed on Sepolia
-export const CONTRACT_ADDRESS = '0x914D5bBeF1F46fcDCb65B15A1276B3CF33C6D304';
+export const CONTRACT_ADDRESS = '0xF4bcDA9C3f10F04EEd27d9C8721145C865B612fF';
 
 // Generated ABI from contract artifacts - Auto-synced from InfoTrade.json
 export const CONTRACT_ABI = [
