@@ -1,63 +1,142 @@
 .infotrade-app {
   min-height: 100vh;
-  background-color: #f9fafb;
+  background: var(--primary-gradient);
+  background-attachment: fixed;
+  position: relative;
+  overflow-x: hidden;
+}
+
+.infotrade-app::before {
+  content: '';
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background:
+    radial-gradient(circle at 20% 50%, rgba(120, 119, 198, 0.3) 0%, transparent 50%),
+    radial-gradient(circle at 80% 20%, rgba(255, 119, 198, 0.3) 0%, transparent 50%),
+    radial-gradient(circle at 40% 80%, rgba(120, 219, 255, 0.3) 0%, transparent 50%);
+  pointer-events: none;
+  z-index: 0;
 }
 
 .main-content {
-  max-width: 56rem;
+  max-width: 80rem;
   margin: 0 auto;
-  padding: 2rem 1rem;
+  padding: 2rem;
+  position: relative;
+  z-index: 1;
+  animation: fadeInUp 0.8s ease-out;
 }
 
 .connect-wallet-container {
   text-align: center;
-  padding: 3rem 0;
+  padding: 6rem 2rem;
+  background: var(--glass-bg);
+  backdrop-filter: blur(20px);
+  border-radius: 30px;
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-shadow);
+  animation: fadeInUp 1s ease-out;
 }
 
 .connect-wallet-title {
-  font-size: 1.5rem;
-  font-weight: 700;
-  color: #111827;
-  margin-bottom: 1rem;
+  font-size: 3rem;
+  font-weight: 800;
+  background: linear-gradient(135deg, #ffffff 0%, #e0e7ff 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  margin-bottom: 1.5rem;
+  letter-spacing: -0.02em;
 }
 
 .connect-wallet-description {
-  color: #4b5563;
-  margin-bottom: 2rem;
+  color: rgba(255, 255, 255, 0.9);
+  margin-bottom: 3rem;
+  font-size: 1.25rem;
+  font-weight: 300;
 }
 
 .tab-navigation {
-  margin-bottom: 2rem;
+  margin-bottom: 3rem;
+  display: flex;
+  justify-content: center;
+  animation: slideInLeft 0.8s ease-out 0.2s both;
 }
 
 .tab-nav {
   display: flex;
-  gap: 2rem;
+  gap: 0;
+  background: var(--glass-bg);
+  backdrop-filter: blur(20px);
+  border-radius: 25px;
+  padding: 0.5rem;
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-shadow);
 }
 
 .tab-button {
-  padding: 0.5rem 0.25rem;
-  border-bottom: 2px solid transparent;
-  font-weight: 500;
-  font-size: 0.875rem;
-  background: none;
-  border-top: none;
-  border-left: none;
-  border-right: none;
+  padding: 1rem 2rem;
+  border: none;
+  font-weight: 600;
+  font-size: 0.95rem;
+  background: transparent;
   cursor: pointer;
-  transition: all 0.2s;
+  transition: var(--transition-smooth);
+  border-radius: 20px;
+  position: relative;
+  overflow: hidden;
+  z-index: 1;
+}
+
+.tab-button::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: var(--primary-gradient);
+  opacity: 0;
+  transition: var(--transition-smooth);
+  z-index: -1;
 }
 
 .tab-button.active {
-  border-bottom-color: #3b82f6;
-  color: #2563eb;
+  color: white;
+  transform: translateY(-2px);
+  box-shadow: 0 8px 25px rgba(102, 126, 234, 0.4);
+}
+
+.tab-button.active::before {
+  opacity: 1;
 }
 
 .tab-button.inactive {
-  color: #6b7280;
+  color: rgba(255, 255, 255, 0.8);
 }
 
 .tab-button.inactive:hover {
-  color: #374151;
-  border-bottom-color: #d1d5db;
+  color: white;
+  transform: translateY(-1px);
+  background: rgba(255, 255, 255, 0.1);
+}
+
+/* Modern Connect Button Override */
+.connect-wallet-container button[data-testid="rk-connect-button"] {
+  background: var(--primary-gradient) !important;
+  border: none !important;
+  border-radius: 20px !important;
+  padding: 1rem 2.5rem !important;
+  font-weight: 600 !important;
+  font-size: 1.1rem !important;
+  box-shadow: 0 8px 25px rgba(102, 126, 234, 0.4) !important;
+  transition: var(--transition-smooth) !important;
+}
+
+.connect-wallet-container button[data-testid="rk-connect-button"]:hover {
+  transform: translateY(-2px) !important;
+  box-shadow: 0 12px 35px rgba(102, 126, 234, 0.6) !important;
 }
