@@ -71,7 +71,8 @@ export function InfoBrowse() {
 
       // Get all info IDs
       const infoIds = await contract.getAllInfos();
-
+      console.log("getAllInfos:",infoIds.length);
+      
       // Get detailed info for each ID
       const items: InfoItem[] = [];
       for (const id of infoIds) {

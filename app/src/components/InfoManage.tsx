@@ -74,7 +74,12 @@ export function InfoManage() {
       const contract = new Contract(CONTRACT_ADDRESS, CONTRACT_ABI, signer);
 
       // Load pending requests for user's info items
-      const requestIds = await contract.getOwnerPendingRequests(address);
+      const requestIds = await contract.getPendingRequests(address);
+      console.log("getOwnerPendingRequests:",requestIds.length,address);
+
+      const requestId = await contract.getRequestId();
+      console.log("getOwnerPendinggetRequestIdequests:",requestId);
+      
       const requests: AccessRequest[] = [];
 
       for (const requestId of requestIds) {

@@ -1,8 +1,4 @@
-// InfoTrade contract deployed on Sepolia
-export const CONTRACT_ADDRESS = '0x2fAa147b8C27b4243BB24e53EcaBb6Ae4574a3f5';
-
-// Generated ABI from contract artifacts - Auto-synced from InfoTrade.json
-export const CONTRACT_ABI = [
+[
   {
     "anonymous": false,
     "inputs": [
@@ -592,4 +588,4 @@ export const CONTRACT_ABI = [
     "stateMutability": "view",
     "type": "function"
   }
-] as const;
+]
