@@ -37,7 +37,13 @@ contract InfoTrade is SepoliaConfig {
 
     event InfoStored(uint256 indexed infoId, address indexed owner, string name, uint256 price);
 
-    event AccessRequested(uint256 indexed requestId, uint256 indexed infoId, address indexed requester, uint256 amount);
+    event AccessRequested(
+        uint256 indexed requestId,
+        uint256 indexed infoId,
+        address indexed requester,
+        uint256 amount,
+        address owner
+    );
 
     event AccessApproved(uint256 indexed requestId, uint256 indexed infoId, address indexed requester);
 
@@ -94,7 +100,7 @@ contract InfoTrade is SepoliaConfig {
         require(!hasAccess[infoId][msg.sender], "Already has access");
 
         uint256 requestId = nextRequestId++;
-
+        address owner = infoItems[infoId].owner;
         accessRequests[requestId] = AccessRequest({
             infoId: infoId,
             requester: msg.sender,
@@ -105,9 +111,14 @@ contract InfoTrade is SepoliaConfig {
         });
 
         userRequests[msg.sender].push(requestId);
-        ownerPendingRequests[infoItems[infoId].owner].push(requestId);
 
-        emit AccessRequested(requestId, infoId, msg.sender, msg.value);
+        ownerPendingRequests[owner].push(requestId);
+
+        emit AccessRequested(requestId, infoId, msg.sender, msg.value, owner);
+    }
+
+    function getRequestId() external view returns (uint256) {
+        return nextRequestId;
     }
 
     function approveAccess(uint256 requestId) external requestExists(requestId) {
